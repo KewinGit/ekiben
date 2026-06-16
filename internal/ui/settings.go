@@ -190,7 +190,7 @@ func (m *Model) viewSettings() string {
 			}
 			body.WriteString(cursor + g + "\n")
 		}
-		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[J/K] move  [tab] next  [enter] save"))
+		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[↑↓] select  [shift+J / shift+K] move  [tab] next  [enter] save"))
 	case tabFields:
 		for i, f := range canonicalFields {
 			cursor := "  "

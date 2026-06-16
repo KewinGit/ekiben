@@ -150,7 +150,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logsVP.Width = msg.Width
 			m.logsVP.Height = msg.Height - 3
 		}
-		return m, nil
+		// Clear the screen so a smaller frame doesn't leave stale rows behind.
+		return m, tea.ClearScreen
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case statsMsg:
@@ -186,6 +187,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.confirm {
 		return m.handleConfirmKey(k)
+	}
+	// Global quit: ctrl+c always; 'q' everywhere except while typing a log search.
+	if k.Type == tea.KeyCtrlC {
+		return m, tea.Quit
+	}
+	if k.String() == "q" && !(m.mode == viewLogs && m.logsSearching) {
+		return m, tea.Quit
 	}
 	if m.mode != viewGrid {
 		if k.String() == "esc" {

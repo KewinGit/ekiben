@@ -105,6 +105,12 @@ func withGaps(cards []string) []string {
 	return out
 }
 
+const ekibenBanner = `        _    _ _
+   ___ | | _(_) |__   ___ _ __
+  / _ \| |/ / | '_ \ / _ \ '_ \
+ |  __/|   <| | |_) |  __/ | | |
+  \___||_|\_\_|_.__/ \___|_| |_|`
+
 func (m *Model) header() string {
 	total := 0
 	healthy, down := 0, 0
@@ -119,8 +125,16 @@ func (m *Model) header() string {
 			}
 		}
 	}
-	h := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render("ekiben")
-	return fmt.Sprintf("%s  %d containers · %d healthy · %d down", h, total, healthy, down)
+	w := m.width
+	if w < 1 {
+		w = 80
+	}
+	banner := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+		lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(ekibenBanner))
+	stats := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+		lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
+			fmt.Sprintf("%d containers · %d healthy · %d down", total, healthy, down)))
+	return banner + "\n" + stats
 }
 
 func (m *Model) groupHeader(g groupLike) string {

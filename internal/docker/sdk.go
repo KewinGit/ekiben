@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/docker/docker/api/types"
@@ -60,17 +61,21 @@ func (s *SDK) List(ctx context.Context, all bool) ([]Container, error) {
 // portsFromSummary extracts unique host-published ports as ":<port>" strings
 // from the Ports slice returned by ContainerList.
 func portsFromSummary(ps []types.Port) []string {
-	out := []string{}
-	seen := map[string]bool{}
+	seen := map[uint16]bool{}
+	nums := []int{}
 	for _, p := range ps {
-		if p.PublicPort == 0 {
+		if p.PublicPort == 0 || seen[p.PublicPort] {
 			continue
 		}
-		s := fmt.Sprintf(":%d", p.PublicPort)
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
+		seen[p.PublicPort] = true
+		nums = append(nums, int(p.PublicPort))
+	}
+	// Docker returns ports in a non-deterministic order; sort ascending so the
+	// card display is stable across refreshes.
+	sort.Ints(nums)
+	out := make([]string, 0, len(nums))
+	for _, n := range nums {
+		out = append(out, fmt.Sprintf(":%d", n))
 	}
 	return out
 }

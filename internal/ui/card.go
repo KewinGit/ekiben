@@ -6,6 +6,7 @@ import (
 
 	"github.com/KewinGit/ekiben/internal/docker"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type CardInput struct {
@@ -39,7 +40,11 @@ func RenderCard(in CardInput) string {
 			spark := Sparkline(in.History, 100)
 			lines = append(lines, fmt.Sprintf("%s %s %4.1f%%", lbl.Render("cpu"), spark, in.Stats.CPUPerc))
 		case "mem":
-			lines = append(lines, fmt.Sprintf("%s %s", lbl.Render("mem"), HumanBytes(in.Stats.MemUsage)))
+			memPct := 0.0
+			if in.Stats.MemLimit > 0 {
+				memPct = float64(in.Stats.MemUsage) / float64(in.Stats.MemLimit) * 100
+			}
+			lines = append(lines, fmt.Sprintf("%s %s %4.1f%%", lbl.Render("mem"), HumanBytes(in.Stats.MemUsage), memPct))
 		case "net":
 			lines = append(lines, fmt.Sprintf("%s ↓%s ↑%s", lbl.Render("net"),
 				HumanBytes(in.Stats.NetRx), HumanBytes(in.Stats.NetTx)))
@@ -58,7 +63,12 @@ func RenderCard(in CardInput) string {
 		}
 	}
 
-	title := cardTitle(in, t)
+	// Truncate every line (and the title) to the inner width so nothing wraps:
+	// wrapping would make a card taller than its siblings and break the grid.
+	title := ansi.Truncate(cardTitle(in, t), innerW, "")
+	for i := range lines {
+		lines[i] = ansi.Truncate(lines[i], innerW, "")
+	}
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	borderColor := t.Border
@@ -107,7 +117,7 @@ func statusLine(in CardInput, t Theme) string {
 	case docker.HealthStarting:
 		return "up · " + lipgloss.NewStyle().Foreground(t.Warn).Render("starting")
 	default:
-		return "up · " + lipgloss.NewStyle().Foreground(t.Dim).Render("no-check")
+		return "up"
 	}
 }
 
