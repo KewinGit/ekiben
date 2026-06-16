@@ -170,46 +170,42 @@ func (m *Model) saveSettings() {
 	m.applyContainers(m.lastContainers)
 }
 
-func (m *Model) viewSettings() string {
+// settingsContent renders the head + body for a given settings tab.
+func (m *Model) settingsContent(tab settingsTab) string {
 	t := m.theme
 	tabs := []string{"Groups", "Card fields", "General"}
 	var head strings.Builder
 	for i, name := range tabs {
 		style := lipgloss.NewStyle().Foreground(t.Dim)
-		if settingsTab(i) == m.settingsTab {
+		if settingsTab(i) == tab {
 			style = lipgloss.NewStyle().Foreground(t.Header).Bold(true)
 		}
 		head.WriteString(style.Render("  " + name + "  "))
 	}
+	cursor := func(i int) string {
+		if i == m.settingsSel {
+			return lipgloss.NewStyle().Foreground(t.Selected).Render("► ")
+		}
+		return "  "
+	}
 	var body strings.Builder
-	switch m.settingsTab {
+	switch tab {
 	case tabGroups:
 		for i, g := range m.settingsGroups {
-			cursor := "  "
-			if i == m.settingsSel {
-				cursor = lipgloss.NewStyle().Foreground(t.Selected).Render("► ")
-			}
-			body.WriteString(cursor + g + "\n")
+			body.WriteString(cursor(i) + g + "\n")
 		}
 		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[↑↓] select  [shift+J / shift+K] move  [tab] next  [enter] save"))
 	case tabFields:
 		for i, f := range canonicalFields {
-			cursor := "  "
-			if i == m.settingsSel {
-				cursor = lipgloss.NewStyle().Foreground(t.Selected).Render("► ")
-			}
 			on := "[ ]"
 			if contains(m.cfg.CardFields, f) {
 				on = lipgloss.NewStyle().Foreground(t.Healthy).Render("[x]")
 			}
-			body.WriteString(cursor + on + " " + f + "\n")
+			body.WriteString(cursor(i) + on + " " + f + "\n")
 		}
 		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[space] toggle  [tab] next  [enter] save"))
 	case tabGeneral:
-		rows := []struct {
-			label string
-			value string
-		}{
+		rows := []struct{ label, value string }{
 			{"refresh interval   ", m.cfg.RefreshInterval},
 			{"confirm destructive", boolStr(m.cfg.ConfirmDestructive)},
 			{"sort within group  ", m.cfg.SortWithinGroup},
@@ -217,21 +213,34 @@ func (m *Model) viewSettings() string {
 			{"theme              ", m.cfg.Theme},
 		}
 		for i, row := range rows {
-			cursor := "  "
-			if i == m.settingsSel {
-				cursor = lipgloss.NewStyle().Foreground(t.Selected).Render("► ")
-			}
-			body.WriteString(cursor + row.label + " " + row.value + "\n")
+			body.WriteString(cursor(i) + row.label + " " + row.value + "\n")
 		}
 		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[←/→] cycle  [space] toggle  [enter] save"))
 	}
+	return head.String() + "\n\n" + body.String()
+}
 
-	content := head.String() + "\n\n" + body.String()
+func (m *Model) viewSettings() string {
+	t := m.theme
+	// Fixed panel size = the largest content across all tabs, so switching tabs
+	// doesn't resize the box.
+	maxW, maxH := 0, 0
+	for _, tb := range []settingsTab{tabGroups, tabFields, tabGeneral} {
+		c := m.settingsContent(tb)
+		if w := lipgloss.Width(c); w > maxW {
+			maxW = w
+		}
+		if h := lipgloss.Height(c); h > maxH {
+			maxH = h
+		}
+	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(t.Border).
 		Padding(0, 1).
-		Render(content)
+		Width(maxW).
+		Height(maxH).
+		Render(m.settingsContent(m.settingsTab))
 	if m.width > 0 && m.height > 0 {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 	}
