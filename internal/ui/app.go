@@ -98,13 +98,14 @@ type Model struct {
 	focusInit bool // pending initial scroll-to-bottom after opening focus
 
 	// logs view (viewport reused by the focus detail view)
-	logsVP        viewport.Model
-	logsID        string
-	logsReady     bool
-	logsRaw       string // full unfiltered content
-	logsQuery     string // current search query
-	logsSearching bool   // true while typing a query
-	logsFollow    bool   // true when follow mode is active
+	logsVP         viewport.Model
+	logsID         string
+	logsReady      bool
+	logsRaw        string // full unfiltered content
+	logsQuery      string // current search query
+	logsSearching  bool   // true while typing a query
+	logsFollow     bool   // true when follow mode is active
+	logsTotalLines int    // wrapped line count of current logs content
 
 	// settings view
 	settingsTab    settingsTab
@@ -246,7 +247,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.id == m.SelectedID() {
 			m.logsRaw = msg.content
 			if !m.logsReady {
-				m.logsVP = viewport.New(m.width, 10)
+				m.logsVP = viewport.New(m.width-1, 10)
+				m.logsVP.MouseWheelEnabled = true
 				m.logsReady = true
 			}
 			m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
@@ -501,6 +503,15 @@ func (m *Model) ensureSelectedVisible() {
 
 // handleMouse handles mouse events (only when in grid view).
 func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// In the detail view, forward wheel events to the logs viewport for scrolling.
+	if m.mode == viewFocus {
+		if m.logsReady {
+			var cmd tea.Cmd
+			m.logsVP, cmd = m.logsVP.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+	}
 	if m.mode != viewGrid {
 		return m, nil
 	}

@@ -32,7 +32,43 @@ func (m *Model) setLogsContent(s string) {
 			w = 80
 		}
 	}
-	m.logsVP.SetContent(lipgloss.NewStyle().Width(w).Render(s))
+	wrapped := lipgloss.NewStyle().Width(w).Render(s)
+	m.logsTotalLines = strings.Count(wrapped, "\n") + 1
+	m.logsVP.SetContent(wrapped)
+}
+
+// scrollbar renders a vertical scroll indicator of the given height. total is the
+// content line count, offset the top visible line, visible the viewport height.
+func scrollbar(height, total, offset, visible int, t Theme) string {
+	if height <= 0 {
+		return ""
+	}
+	track := lipgloss.NewStyle().Foreground(t.Border)
+	thumbS := lipgloss.NewStyle().Foreground(t.Accent)
+	lines := make([]string, height)
+	if total <= visible || total <= 0 {
+		for i := range lines {
+			lines[i] = track.Render("│")
+		}
+		return strings.Join(lines, "\n")
+	}
+	thumb := height * visible / total
+	if thumb < 1 {
+		thumb = 1
+	}
+	maxOffset := total - visible
+	pos := 0
+	if maxOffset > 0 {
+		pos = (height - thumb) * offset / maxOffset
+	}
+	for i := 0; i < height; i++ {
+		if i >= pos && i < pos+thumb {
+			lines[i] = thumbS.Render("█")
+		} else {
+			lines[i] = track.Render("░")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // updateLogs forwards a key to the logs viewport (scrolling) and returns its cmd.

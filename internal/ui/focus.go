@@ -73,17 +73,21 @@ func (m *Model) viewFocus() string {
 		status += fmt.Sprintf("  filter: %s", m.logsQuery)
 	}
 	logsHead := lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render("logs") + dim.Render(status)
-	help := dim.Render("[↑↓ PgUp/PgDn g/G] scroll  [f] follow  [/] search  [s r p a u d] actions  [esc] back")
+	help := dim.Render(
+		"↑↓ PgUp/PgDn g/G scroll · wheel scroll · f follow · / search · esc back\n" +
+			"s stop · r restart · p pause · a start · u unpause · d delete")
+	helpH := lipgloss.Height(help)
 
-	logsH := m.height - infoH - 3 // -3: logs header, help, separator
+	logsH := m.height - infoH - helpH - 2 // logs header + separator
 	if logsH < 3 {
 		logsH = 3
 	}
 	var logsView string
 	if m.logsReady {
-		m.logsVP.Width = m.width
+		m.logsVP.Width = m.width - 1 // leave a column for the scrollbar
 		m.logsVP.Height = logsH
-		logsView = m.logsVP.View()
+		bar := scrollbar(logsH, m.logsTotalLines, m.logsVP.YOffset, logsH, t)
+		logsView = lipgloss.JoinHorizontal(lipgloss.Top, m.logsVP.View(), bar)
 	} else {
 		logsView = dim.Render("(loading…)")
 	}
