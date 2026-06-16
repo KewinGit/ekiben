@@ -105,7 +105,6 @@ func shortID(id string) string {
 // loadLogsCmd stub (real body in Task 19)
 func (m *Model) loadLogsCmd() tea.Cmd { return nil }
 
-// other-view stubs (real bodies in Tasks 18-20)
-func (m *Model) viewFocus() string    { return "focus" }
+// view stubs (real bodies in Tasks 19-20)
 func (m *Model) viewLogs() string     { return "logs" }
 func (m *Model) viewSettings() string { return "settings" }

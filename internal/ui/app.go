@@ -140,6 +140,13 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.confirm {
 		return m.handleConfirmKey(k)
 	}
+	if m.mode != viewGrid {
+		if k.String() == "esc" {
+			m.mode = viewGrid
+			m.focusInspect = false
+			return m, nil
+		}
+	}
 	switch k.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
