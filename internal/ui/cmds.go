@@ -120,6 +120,3 @@ func (m *Model) loadLogsCmd() tea.Cmd {
 		return logsMsg{id: id, content: string(b)}
 	}
 }
-
-// viewSettings stub (real body in Task 20)
-func (m *Model) viewSettings() string { return "settings" }

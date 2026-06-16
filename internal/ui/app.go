@@ -50,6 +50,12 @@ type Model struct {
 	logsQuery     string // current search query
 	logsSearching bool   // true while typing a query
 	logsFollow    bool   // true when follow mode is active
+
+	// settings view
+	settingsTab    settingsTab
+	settingsSel    int
+	settingsGroups []string
+	lastContainers []docker.Container
 }
 
 func New(client docker.Client, cfg config.Config) *Model {
@@ -77,6 +83,7 @@ func (m *Model) Init() tea.Cmd {
 
 // applyContainers rebuilds groups + the flattened navigation order.
 func (m *Model) applyContainers(cs []docker.Container) {
+	m.lastContainers = cs
 	if !m.cfg.ShowStopped {
 		filtered := make([]docker.Container, 0, len(cs))
 		for _, c := range cs {
@@ -165,6 +172,13 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+	if m.mode == viewSettings {
+		if k.String() == "esc" {
+			m.mode = viewGrid
+			return m, nil
+		}
+		return m, m.updateSettings(k)
+	}
 	if m.mode == viewLogs {
 		if m.logsSearching {
 			switch k.Type {
@@ -236,6 +250,7 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.focusInspect = true
 	case "c":
 		m.mode = viewSettings
+		m.enterSettings()
 	}
 	return m, nil
 }
