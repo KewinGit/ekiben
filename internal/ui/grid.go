@@ -423,15 +423,29 @@ func (m *Model) viewImages() string {
 	if avail < 8 {
 		avail = 8
 	}
-	listH := (avail-1)/2 + 1
-	detailH := avail - 1 - listH // -1 reserves a hint line below the list
-
 	if m.imgSel >= len(m.images) {
 		m.imgSel = max(0, len(m.images)-1)
 	}
 	bold := lipgloss.NewStyle().Foreground(t.Header).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(t.Dim)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
+
+	// build the detail first so the list can take all the remaining space
+	var det []string
+	if len(m.images) > 0 {
+		img := m.images[m.imgSel]
+		ref := img.Repo + ":" + img.Tag
+		det = append(det, bold.Render("containers from ")+accent.Render(ref))
+		cs := m.containersUsingImage(ref)
+		if len(cs) == 0 {
+			det = append(det, dim.Render("  (none)"))
+		} else {
+			for _, n := range cs {
+				det = append(det, "  "+n)
+			}
+		}
+	}
+	listH, detailH := splitListDetail(avail, len(det))
 
 	var totalSize int64
 	for _, img := range m.images {
@@ -460,26 +474,31 @@ func (m *Model) viewImages() string {
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
-
-	var det []string
-	if len(m.images) > 0 {
-		img := m.images[m.imgSel]
-		ref := img.Repo + ":" + img.Tag
-		det = append(det, bold.Render("containers from ")+accent.Render(ref))
-		cs := m.containersUsingImage(ref)
-		if len(cs) == 0 {
-			det = append(det, dim.Render("  (none)"))
-		} else {
-			for _, n := range cs {
-				det = append(det, "  "+n)
-			}
-		}
-	}
 	detailPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
 	hint := dim.Render("  ↑↓/click select · d delete · tab/1-5 switch tab")
 	return tab + "\n" + listPanel + "\n" + hint + "\n" + detailPanel
+}
+
+// splitListDetail sizes the list/detail panels: the detail takes only the space
+// its content needs (clamped), and the list gets all the rest.
+func splitListDetail(avail, detailLines int) (listH, detailH int) {
+	detailH = detailLines + 2 // border
+	if detailH < 4 {
+		detailH = 4
+	}
+	if detailH > avail-5 { // always leave room for the list
+		detailH = avail - 5
+	}
+	if detailH < 3 {
+		detailH = 3
+	}
+	listH = avail - 1 - detailH // -1 for the hint line
+	if listH < 3 {
+		listH = 3
+	}
+	return listH, detailH
 }
 
 // viewVolumes renders the volumes listing panel.
@@ -494,9 +513,6 @@ func (m *Model) viewVolumes() string {
 	if avail < 8 {
 		avail = 8
 	}
-	listH := (avail-1)/2 + 1
-	detailH := avail - 1 - listH
-
 	if m.volSel >= len(m.volumes) {
 		m.volSel = max(0, len(m.volumes)-1)
 	}
@@ -504,7 +520,23 @@ func (m *Model) viewVolumes() string {
 	dim := lipgloss.NewStyle().Foreground(t.Dim)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
-	// list panel
+	// detail first (containers using the selected volume), to size the panels
+	var det []string
+	if len(m.volumes) > 0 {
+		v := m.volumes[m.volSel]
+		det = append(det, bold.Render("containers using ")+accent.Render(v.Name))
+		det = append(det, dim.Render(ansi.Truncate(v.Mountpoint, w-6, "…")))
+		cs := m.containersUsingVolume(v.Name)
+		if len(cs) == 0 {
+			det = append(det, dim.Render("  (none)"))
+		} else {
+			for _, n := range cs {
+				det = append(det, "  "+n)
+			}
+		}
+	}
+	listH, detailH := splitListDetail(avail, len(det))
+
 	var totalSize int64
 	for _, v := range m.volumes {
 		totalSize += v.Size
@@ -528,22 +560,6 @@ func (m *Model) viewVolumes() string {
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
-
-	// detail panel: containers using the selected volume
-	var det []string
-	if len(m.volumes) > 0 {
-		v := m.volumes[m.volSel]
-		det = append(det, bold.Render("containers using ")+accent.Render(v.Name))
-		det = append(det, dim.Render(ansi.Truncate(v.Mountpoint, w-6, "…")))
-		cs := m.containersUsingVolume(v.Name)
-		if len(cs) == 0 {
-			det = append(det, dim.Render("  (none)"))
-		} else {
-			for _, n := range cs {
-				det = append(det, "  "+n)
-			}
-		}
-	}
 	detailPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
@@ -563,15 +579,28 @@ func (m *Model) viewNetworks() string {
 	if avail < 8 {
 		avail = 8
 	}
-	listH := (avail-1)/2 + 1
-	detailH := avail - 1 - listH
-
 	if m.netSel >= len(m.networks) {
 		m.netSel = max(0, len(m.networks)-1)
 	}
 	bold := lipgloss.NewStyle().Foreground(t.Header).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(t.Dim)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
+
+	// detail first (containers in the selected network), to size the panels
+	var det []string
+	if len(m.networks) > 0 {
+		net := m.networks[m.netSel]
+		det = append(det, bold.Render("containers in ")+accent.Render(net.Name))
+		cs := m.containersInNetwork(net.Name)
+		if len(cs) == 0 {
+			det = append(det, dim.Render("  (none)"))
+		} else {
+			for _, n := range cs {
+				det = append(det, "  "+n)
+			}
+		}
+	}
+	listH, detailH := splitListDetail(avail, len(det))
 
 	rows := []string{bold.Render(fmt.Sprintf("  %-24s %-9s %-6s %-14s %s", "NAME", "DRIVER", "SCOPE", "ID", "STATUS")) +
 		dim.Render(fmt.Sprintf("   (%d)", len(m.networks)))}
@@ -597,20 +626,6 @@ func (m *Model) viewNetworks() string {
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
-
-	var det []string
-	if len(m.networks) > 0 {
-		net := m.networks[m.netSel]
-		det = append(det, bold.Render("containers in ")+accent.Render(net.Name))
-		cs := m.containersInNetwork(net.Name)
-		if len(cs) == 0 {
-			det = append(det, dim.Render("  (none)"))
-		} else {
-			for _, n := range cs {
-				det = append(det, "  "+n)
-			}
-		}
-	}
 	detailPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
