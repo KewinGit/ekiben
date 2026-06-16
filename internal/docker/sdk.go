@@ -47,6 +47,7 @@ func (s *SDK) List(ctx context.Context, all bool) ([]Container, error) {
 		}
 		st, health, exit := ParseState(su.State, su.Status)
 		ports := portsFromSummary(su.Ports)
+		exposed := exposedFromSummary(su.Ports)
 		var nets []string
 		if su.NetworkSettings != nil {
 			for n := range su.NetworkSettings.Networks {
@@ -75,6 +76,7 @@ func (s *SDK) List(ctx context.Context, all bool) ([]Container, error) {
 			Health:    health,
 			ExitCode:  exit,
 			Ports:     ports,
+			Exposed:   exposed,
 			CreatedAt: time.Unix(su.Created, 0),
 			Networks:  nets,
 			Mounts:    mounts,
@@ -101,6 +103,26 @@ func portsFromSummary(ps []types.Port) []string {
 	out := make([]string, 0, len(nums))
 	for _, n := range nums {
 		out = append(out, fmt.Sprintf(":%d", n))
+	}
+	return out
+}
+
+// exposedFromSummary returns the distinct container (private) ports as "<port>",
+// sorted ascending — these are exposed regardless of host publishing.
+func exposedFromSummary(ps []types.Port) []string {
+	seen := map[uint16]bool{}
+	nums := []int{}
+	for _, p := range ps {
+		if p.PrivatePort == 0 || seen[p.PrivatePort] {
+			continue
+		}
+		seen[p.PrivatePort] = true
+		nums = append(nums, int(p.PrivatePort))
+	}
+	sort.Ints(nums)
+	out := make([]string, 0, len(nums))
+	for _, n := range nums {
+		out = append(out, fmt.Sprintf("%d", n))
 	}
 	return out
 }

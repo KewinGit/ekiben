@@ -19,7 +19,7 @@ const (
 const settingsTabCount = 3
 
 // canonicalFields defines the canonical order for card fields.
-var canonicalFields = []string{"status", "health", "cpu", "mem", "net", "port", "uptime", "image", "pids"}
+var canonicalFields = []string{"status", "health", "cpu", "mem", "net", "port", "exposed", "uptime", "image", "pids"}
 
 // refreshIntervalOpts and sortOpts and themeOpts are the cycle options for General tab.
 var refreshIntervalOpts = []string{"1s", "2s", "5s"}
@@ -56,7 +56,7 @@ func (m *Model) settingsRowCount() int {
 	case tabGroups:
 		return len(m.settingsGroups)
 	case tabFields:
-		return 9
+		return len(canonicalFields)
 	case tabGeneral:
 		return 5
 	}

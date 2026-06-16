@@ -95,6 +95,11 @@ func (m *Model) viewFocus() string {
 		ports = accent.Render(strings.Join(c.Ports, " "))
 	}
 	info.WriteString(lbl.Render("ports") + " " + ports + "\n")
+	exp := "—"
+	if len(c.Exposed) > 0 {
+		exp = strings.Join(c.Exposed, " ")
+	}
+	info.WriteString(lbl.Render("exp  ") + " " + dim.Render(trunc(exp)) + "\n")
 	nets := "—"
 	if len(c.Networks) > 0 {
 		nets = strings.Join(c.Networks, " ")

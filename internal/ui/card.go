@@ -82,6 +82,12 @@ func RenderCard(in CardInput) string {
 				ports = lipgloss.NewStyle().Foreground(t.Accent).Render(strings.Join(in.Container.Ports, " "))
 			}
 			lines = append(lines, fmt.Sprintf("%s %s", lbl.Render("port"), ports))
+		case "exposed":
+			exp := "—"
+			if len(in.Container.Exposed) > 0 {
+				exp = strings.Join(in.Container.Exposed, " ")
+			}
+			lines = append(lines, lbl.Render("exp")+" "+lipgloss.NewStyle().Foreground(t.Dim).Render(exp))
 		case "image":
 			lines = append(lines, fmt.Sprintf("%s %s", lbl.Render("img"), in.Container.Image))
 		case "pids":

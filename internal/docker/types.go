@@ -57,7 +57,8 @@ type Container struct {
 	Status    Status
 	Health    Health
 	ExitCode  int
-	Ports     []string // host-facing ports, e.g. []string{":5432"} or {":80", ":443"}
+	Ports     []string // host-published ports, e.g. {":5432"} or {":80", ":443"}
+	Exposed   []string // exposed/internal container ports, e.g. {"80", "443"}
 	CreatedAt time.Time
 	Networks  []string // names of networks the container is attached to
 	Mounts    []string // volume names / bind sources the container uses
