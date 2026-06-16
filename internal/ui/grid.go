@@ -42,21 +42,113 @@ func (m *Model) viewCurrent() string {
 }
 
 func (m *Model) viewGrid() string {
-	var b strings.Builder
+	// --- header ---
+	header := m.header()
+	var errBannerLines []string
 	if m.lastErr != nil {
-		b.WriteString(lipgloss.NewStyle().Foreground(m.theme.Problem).
-			Render("⚠ Docker error: "+m.lastErr.Error()+" — retrying…") + "\n\n")
+		errBannerLines = []string{
+			lipgloss.NewStyle().Foreground(m.theme.Problem).
+				Render("⚠ Docker error: " + m.lastErr.Error() + " — retrying…"),
+		}
 	}
-	b.WriteString(m.header() + "\n\n")
+
+	// footer
+	var footer string
+	if m.confirm {
+		footer = m.confirmBar()
+	} else {
+		footer = m.actionBar()
+	}
+
+	// --- guard: no dimensions yet ---
+	if m.height <= 0 || m.width <= 0 {
+		var b strings.Builder
+		b.WriteString(header + "\n")
+		for _, l := range errBannerLines {
+			b.WriteString(l + "\n")
+		}
+		b.WriteString(m.buildBodyFull() + "\n")
+		b.WriteString(footer)
+		return b.String()
+	}
+
+	// --- compute layout heights ---
+	headerH := lipgloss.Height(header)
+	footerH := lipgloss.Height(footer)
+	errH := len(errBannerLines)
+	bodyTop := headerH + 1 // +1 for the "\n" separator after header
+	// availH = total screen minus header row (with separator), error banner, footer
+	availH := m.height - bodyTop - errH - footerH - 1 // -1 for separator before footer
+	if availH < 1 {
+		availH = 1
+	}
+	m.bodyTop = bodyTop + errH
+	m.gridAvailH = availH
+
+	// --- build full body lines + rects ---
+	bodyLines, rects := m.buildBodyLines()
+	m.cardRects = rects
+	totalH := len(bodyLines)
+	m.gridBodyH = totalH
+
+	// --- clamp scroll ---
+	maxScroll := max(0, totalH-availH)
+	if m.scrollY < 0 {
+		m.scrollY = 0
+	}
+	if m.scrollY > maxScroll {
+		m.scrollY = maxScroll
+	}
+
+	// --- window ---
+	end := m.scrollY + availH
+	if end > totalH {
+		end = totalH
+	}
+	windowLines := bodyLines[m.scrollY:end]
+
+	// pad to availH to prevent ghosting
+	for len(windowLines) < availH {
+		windowLines = append(windowLines, "")
+	}
+
+	// --- assemble ---
+	var b strings.Builder
+	b.WriteString(header + "\n")
+	for _, l := range errBannerLines {
+		b.WriteString(l + "\n")
+	}
+	b.WriteString(strings.Join(windowLines, "\n"))
+	b.WriteString("\n" + footer)
+	return b.String()
+}
+
+// buildBodyFull builds the body as a single string (no windowing, for uninitialized state).
+func (m *Model) buildBodyFull() string {
+	lines, _ := m.buildBodyLines()
+	return strings.Join(lines, "\n")
+}
+
+// buildBodyLines builds the grid body as a slice of lines and records card rects.
+// y coordinates in rects are offsets within the full body slice.
+func (m *Model) buildBodyLines() ([]string, []cardRect) {
 	cardW := CardWidth(m.width, m.cols)
 	sel := m.SelectedID()
 
+	var lines []string
+	var rects []cardRect
+
 	for _, g := range m.groups {
-		b.WriteString(m.groupHeader(g) + "\n")
+		// group header line
+		lines = append(lines, m.groupHeader(g))
+
 		if m.collapsed[g.Name] {
 			continue
 		}
+
+		// build rendered cards for this group
 		var cards []string
+		var ids []string
 		for _, c := range g.Containers {
 			hist := []float64{}
 			if rb := m.history[c.ID]; rb != nil {
@@ -67,15 +159,46 @@ func (m *Model) viewGrid() string {
 				Fields: m.cfg.CardFields, Width: cardW,
 				Selected: c.ID == sel, Theme: m.theme,
 			}))
+			ids = append(ids, c.ID)
 		}
-		b.WriteString(joinCards(cards, m.cols) + "\n")
+
+		// lay out in rows of m.cols
+		cols := m.cols
+		if cols < 1 {
+			cols = 1
+		}
+		for rowStart := 0; rowStart < len(cards); rowStart += cols {
+			rowEnd := rowStart + cols
+			if rowEnd > len(cards) {
+				rowEnd = len(cards)
+			}
+			rowCards := cards[rowStart:rowEnd]
+			rowIDs := ids[rowStart:rowEnd]
+
+			// rendered row (for display)
+			rowStr := lipgloss.JoinHorizontal(lipgloss.Top, withGaps(rowCards)...)
+			rowLines := strings.Split(rowStr, "\n")
+			rowH := len(rowLines)
+
+			// compute rects for each card in the row
+			xCursor := 0
+			for colIdx, card := range rowCards {
+				cw := lipgloss.Width(card)
+				rects = append(rects, cardRect{
+					id: rowIDs[colIdx],
+					x:  xCursor,
+					y:  len(lines),
+					w:  cw,
+					h:  rowH,
+				})
+				xCursor += cw + CardGap // +1 for the gap " " inserted by withGaps
+			}
+
+			lines = append(lines, rowLines...)
+		}
 	}
-	if m.confirm {
-		b.WriteString("\n" + m.confirmBar())
-	} else {
-		b.WriteString("\n" + m.actionBar())
-	}
-	return b.String()
+
+	return lines, rects
 }
 
 // joinCards lays out card strings into rows of `cols`.

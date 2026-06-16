@@ -11,6 +11,25 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// cardRect is a hit-test rectangle for a card in the grid body.
+// y is the line index within the FULL (pre-scroll) body; x is the column offset.
+type cardRect struct {
+	id   string
+	x, y int
+	w, h int
+}
+
+// cardAt returns the id of the rect that contains (x, y) or ("", false).
+// x/y are in pre-scroll body coordinates.
+func cardAt(rects []cardRect, x, y int) (string, bool) {
+	for _, r := range rects {
+		if x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h {
+			return r.id, true
+		}
+	}
+	return "", false
+}
+
 type retryMsg struct{}
 
 type viewMode int
@@ -41,10 +60,20 @@ type Model struct {
 	mode         viewMode
 	focusInspect bool
 
+	// scrollable grid state
+	scrollY    int        // vertical scroll offset in body lines
+	cardRects  []cardRect // hit-test rects from last render
+	bodyTop    int        // screen line where body starts (= header height)
+	gridAvailH int        // visible body height from last render
+	gridBodyH  int        // total body height from last render
+
 	// confirm modal
 	confirm    bool
 	confirmFor string // action name
 	confirmID  string
+
+	// focus view live logs
+	focusLogs string
 
 	// logs view
 	logsVP        viewport.Model
@@ -154,6 +183,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.ClearScreen
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case statsMsg:
 		m.ingestStats(msg)
 		return m, m.pollCmd()
@@ -173,6 +204,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logsTickMsg:
 		if m.logsFollow && m.mode == viewLogs {
 			return m, tea.Batch(m.loadLogsCmd(), m.logsTickCmd())
+		}
+		return m, nil
+	case focusLogsMsg:
+		if msg.id == m.SelectedID() {
+			m.focusLogs = msg.content
+		}
+		return m, nil
+	case focusTickMsg:
+		if m.mode == viewFocus {
+			return m, tea.Batch(m.loadFocusLogsCmd(), m.focusTickCmd())
 		}
 		return m, nil
 	case errMsg:
@@ -272,7 +313,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		return m, m.requestAction("unpause")
 	case "enter":
+		m.focusLogs = ""
 		m.mode = viewFocus
+		return m, tea.Batch(m.loadFocusLogsCmd(), m.focusTickCmd())
 	case "l":
 		m.mode = viewLogs
 		m.logsFollow = false
@@ -280,8 +323,10 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.logsQuery = ""
 		return m, m.loadLogsCmd()
 	case "i":
+		m.focusLogs = ""
 		m.mode = viewFocus
 		m.focusInspect = true
+		return m, tea.Batch(m.loadFocusLogsCmd(), m.focusTickCmd())
 	case "c":
 		m.mode = viewSettings
 		m.enterSettings()
@@ -301,6 +346,71 @@ func (m *Model) move(delta int) {
 		n = len(m.order) - 1
 	}
 	m.selected = n
+	m.ensureSelectedVisible()
+}
+
+// ensureSelectedVisible adjusts scrollY so the selected card's rect is visible.
+func (m *Model) ensureSelectedVisible() {
+	if m.gridAvailH <= 0 {
+		return
+	}
+	id := m.SelectedID()
+	for _, r := range m.cardRects {
+		if r.id != id {
+			continue
+		}
+		maxScroll := max(0, m.gridBodyH-m.gridAvailH)
+		// scroll up if card top is above viewport
+		if r.y < m.scrollY {
+			m.scrollY = r.y
+		}
+		// scroll down if card bottom is below viewport
+		if r.y+r.h > m.scrollY+m.gridAvailH {
+			m.scrollY = r.y + r.h - m.gridAvailH
+		}
+		if m.scrollY < 0 {
+			m.scrollY = 0
+		}
+		if m.scrollY > maxScroll {
+			m.scrollY = maxScroll
+		}
+		return
+	}
+}
+
+// handleMouse handles mouse events (only when in grid view).
+func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.mode != viewGrid {
+		return m, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.scrollY -= 3
+		if m.scrollY < 0 {
+			m.scrollY = 0
+		}
+	case tea.MouseButtonWheelDown:
+		maxScroll := max(0, m.gridBodyH-m.gridAvailH)
+		m.scrollY += 3
+		if m.scrollY > maxScroll {
+			m.scrollY = maxScroll
+		}
+	case tea.MouseButtonLeft:
+		if msg.Action != tea.MouseActionPress {
+			return m, nil
+		}
+		bodyY := msg.Y - m.bodyTop + m.scrollY
+		id, ok := cardAt(m.cardRects, msg.X, bodyY)
+		if ok {
+			for i, oid := range m.order {
+				if oid == id {
+					m.selected = i
+					break
+				}
+			}
+		}
+	}
+	return m, nil
 }
 
 // View is implemented in grid.go (and dispatches to other views later).

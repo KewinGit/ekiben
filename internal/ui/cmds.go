@@ -129,3 +129,34 @@ func (m *Model) loadLogsCmd() tea.Cmd {
 		return logsMsg{id: id, content: string(b)}
 	}
 }
+
+// focusLogsMsg carries a short log tail for the focus view.
+type focusLogsMsg struct {
+	id      string
+	content string
+}
+
+// focusTickMsg drives the focus-view log refresh loop.
+type focusTickMsg struct{}
+
+// loadFocusLogsCmd fetches the last ~50 log lines for the selected container.
+func (m *Model) loadFocusLogsCmd() tea.Cmd {
+	client := m.client
+	id := m.SelectedID()
+	return func() tea.Msg {
+		rc, err := client.Logs(context.Background(), id, false, 50)
+		if err != nil {
+			return focusLogsMsg{id: id, content: ""}
+		}
+		defer rc.Close()
+		b, _ := readAllDemux(rc)
+		return focusLogsMsg{id: id, content: string(b)}
+	}
+}
+
+// focusTickCmd schedules a focusTickMsg after 2 seconds.
+func (m *Model) focusTickCmd() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		return focusTickMsg{}
+	})
+}

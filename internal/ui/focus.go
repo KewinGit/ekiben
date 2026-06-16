@@ -6,6 +6,7 @@ import (
 
 	"github.com/KewinGit/ekiben/internal/docker"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func (m *Model) selectedContainer() (docker.Container, bool) {
@@ -45,6 +46,35 @@ func (m *Model) viewFocus() string {
 	if len(c.Ports) > 0 {
 		b.WriteString("port " + strings.Join(c.Ports, " ") + "\n")
 	}
+
+	// --- live log tail ---
+	b.WriteString("\n")
+	logLabel := lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render("logs")
+	b.WriteString(logLabel + "\n")
+	dimStyle := lipgloss.NewStyle().Foreground(t.Dim)
+	viewW := m.width
+	if viewW < 1 {
+		viewW = 80
+	}
+	if m.focusLogs == "" {
+		b.WriteString(dimStyle.Render("  (loading…)") + "\n")
+	} else {
+		allLines := strings.Split(m.focusLogs, "\n")
+		// take last 10 lines
+		start := len(allLines) - 10
+		if start < 0 {
+			start = 0
+		}
+		tailLines := allLines[start:]
+		for _, l := range tailLines {
+			if l == "" {
+				continue
+			}
+			truncated := ansi.Truncate(l, viewW-2, "")
+			b.WriteString(dimStyle.Render("  "+truncated) + "\n")
+		}
+	}
+
 	b.WriteString("\n" + lipgloss.NewStyle().Foreground(t.Dim).Render(
 		"[esc] back  [l] logs  [s] stop  [r] restart  [a] start  [u] unpause"))
 	return b.String()
