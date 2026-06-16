@@ -65,7 +65,7 @@ func (m *Model) Init() tea.Cmd { return nil }
 // applyContainers rebuilds groups + the flattened navigation order.
 func (m *Model) applyContainers(cs []docker.Container) {
 	if !m.cfg.ShowStopped {
-		filtered := cs[:0]
+		filtered := make([]docker.Container, 0, len(cs))
 		for _, c := range cs {
 			if c.Running() {
 				filtered = append(filtered, c)
