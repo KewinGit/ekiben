@@ -251,7 +251,15 @@ func (s *SDK) Images(ctx context.Context) ([]Image, error) {
 			Created: time.Unix(su.Created, 0),
 		})
 	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Repo+":"+out[i].Tag < out[j].Repo+":"+out[j].Tag
+	})
 	return out, nil
+}
+
+func sortVolumes(out []Volume) []Volume {
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func (s *SDK) Volumes(ctx context.Context) ([]Volume, error) {
@@ -271,7 +279,7 @@ func (s *SDK) Volumes(ctx context.Context) ([]Volume, error) {
 				Size:       sz,
 			})
 		}
-		return out, nil
+		return sortVolumes(out), nil
 	}
 	// Fallback: VolumeList with Size 0.
 	resp, err2 := s.cli.VolumeList(ctx, volume.ListOptions{})
@@ -286,7 +294,7 @@ func (s *SDK) Volumes(ctx context.Context) ([]Volume, error) {
 			Mountpoint: v.Mountpoint,
 		})
 	}
-	return out, nil
+	return sortVolumes(out), nil
 }
 
 func (s *SDK) Networks(ctx context.Context) ([]Network, error) {
@@ -307,6 +315,7 @@ func (s *SDK) Networks(ctx context.Context) ([]Network, error) {
 			Scope:  n.Scope,
 		})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
