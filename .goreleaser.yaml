@@ -1,0 +1,42 @@
+version: 2
+
+project_name: ekiben
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ekiben
+    main: ./cmd/ekiben
+    binary: ekiben
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/KewinGit/ekiben/internal/version.Version={{.Version}}
+
+archives:
+  - id: tarball
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+nfpms:
+  - id: packages
+    package_name: ekiben
+    maintainer: Kevin Corso <kevin.froster.personal@outlook.it>
+    description: Terminal UI to monitor and manage Docker containers as compose-grouped cards.
+    homepage: https://github.com/KewinGit/ekiben
+    license: MIT
+    formats: [deb, rpm, apk]
+    bindir: /usr/bin
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: KewinGit
+    name: ekiben
+  draft: false

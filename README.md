@@ -5,12 +5,32 @@ Compose project in a fluid responsive grid.
 
 ## Install
 
+### Debian / Ubuntu (.deb)
+
 ```bash
-make build          # produces ./ekiben (static binary)
-make install        # copies to ~/.local/bin
+# grab the latest .deb from Releases, then:
+sudo apt install ./ekiben_<version>_amd64.deb
 ```
 
-Or copy the built `ekiben` binary to any Linux server — no runtime deps.
+### RHEL / Fedora (.rpm)
+
+```bash
+sudo rpm -i ekiben_<version>_amd64.rpm
+```
+
+### Go
+
+```bash
+go install github.com/KewinGit/ekiben/cmd/ekiben@latest
+```
+
+### From source
+
+```bash
+make build      # -> ./ekiben (static binary, copy anywhere)
+```
+
+> A full APT repository (`apt install ekiben` after `apt update`) is planned.
 
 ## Usage
 
