@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/KewinGit/ekiben/internal/config"
@@ -9,6 +11,7 @@ import (
 	"github.com/KewinGit/ekiben/internal/model"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // cardRect is a hit-test rectangle for a card in the grid body.
@@ -37,6 +40,25 @@ func cardAt(rects []cardRect, x, y int) (string, bool) {
 }
 
 type retryMsg struct{}
+
+type modalKind int
+
+const (
+	modalNone modalKind = iota
+	modalConfirm
+	modalBlocked
+)
+
+// modalState drives the centered confirmation / blocking popup.
+type modalState struct {
+	kind   modalKind
+	title  string
+	msg    string
+	danger bool // red styling for dangerous actions
+	steps  int  // confirmations required (1 = single, 2 = double)
+	stage  int  // confirmations given so far
+	action func() tea.Cmd
+}
 
 type viewMode int
 
@@ -89,10 +111,8 @@ type Model struct {
 	gridBodyH    int         // total body height from last render
 	gridContentW int         // body content width (inside the panel border)
 
-	// confirm modal
-	confirm    bool
-	confirmFor string // action name
-	confirmID  string
+	// confirmation / blocking modal
+	modal modalState
 
 	// focus view live logs
 	focusInit bool // pending initial scroll-to-bottom after opening focus
@@ -252,7 +272,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.lastErr = msg.err
 		}
-		return m, m.refreshCmd()
+		// reload everything: an action may have changed containers/images/volumes/networks
+		return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
 	case focusLogsMsg:
 		if msg.id == m.SelectedID() {
 			m.logsRaw = msg.content
@@ -286,8 +307,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.confirm {
-		return m.handleConfirmKey(k)
+	if m.modal.kind != modalNone {
+		return m.handleModalKey(k)
 	}
 	// Global quit: ctrl+c always; 'q' everywhere except while typing a log search.
 	if k.Type == tea.KeyCtrlC {
@@ -335,7 +356,7 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Images / Networks / Volumes tabs: up/down move the list selection.
+	// Images / Networks / Volumes tabs: up/down move the list selection, d deletes.
 	if sel, n := m.listSelPtr(); sel != nil {
 		switch k.String() {
 		case "up", "k":
@@ -346,6 +367,8 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if *sel < n-1 {
 				*sel++
 			}
+		case "d":
+			m.requestListDelete()
 		}
 		return m, nil
 	}
@@ -630,7 +653,71 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 // View is implemented in grid.go (and dispatches to other views later).
-func (m *Model) View() string { return m.viewCurrent() }
+func (m *Model) View() string {
+	if m.modal.kind != modalNone {
+		return m.viewModal()
+	}
+	return m.viewCurrent()
+}
+
+// handleModalKey processes keys while a modal is open.
+func (m *Model) handleModalKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.modal.kind == modalBlocked {
+		m.modal = modalState{} // any key dismisses
+		return m, nil
+	}
+	// modalConfirm
+	if s := k.String(); s == "y" || s == "Y" {
+		m.modal.stage++
+		if m.modal.stage >= m.modal.steps {
+			act := m.modal.action
+			m.modal = modalState{}
+			if act != nil {
+				return m, act()
+			}
+		}
+		return m, nil
+	}
+	m.modal = modalState{} // any other key cancels
+	return m, nil
+}
+
+// viewModal renders the centered confirmation / blocking popup.
+func (m *Model) viewModal() string {
+	t := m.theme
+	border := t.Border
+	titleStyle := lipgloss.NewStyle().Foreground(t.Header).Bold(true)
+	if m.modal.danger {
+		border = t.Problem
+		titleStyle = lipgloss.NewStyle().Foreground(t.Problem).Bold(true)
+	}
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(m.modal.title) + "\n\n")
+	b.WriteString(m.modal.msg + "\n\n")
+	dim := lipgloss.NewStyle().Foreground(t.Dim)
+	switch m.modal.kind {
+	case modalBlocked:
+		b.WriteString(dim.Render("[any key] close"))
+	case modalConfirm:
+		if m.modal.steps > 1 {
+			rem := m.modal.steps - m.modal.stage
+			b.WriteString(lipgloss.NewStyle().Foreground(t.Problem).Bold(true).
+				Render(fmt.Sprintf("DANGER — press y %d more time(s); any other key cancels", rem)))
+		} else {
+			b.WriteString(dim.Render("[y] confirm    [n] cancel"))
+		}
+	}
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(border).
+		Padding(1, 3).Render(b.String())
+	w, h := m.width, m.height
+	if w < 1 {
+		w = 80
+	}
+	if h < 1 {
+		h = 24
+	}
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, box)
+}
 
 func (m *Model) selectedGroupName() string {
 	id := m.SelectedID()
@@ -670,15 +757,77 @@ func (m *Model) saveConfig() {
 }
 
 func (m *Model) requestAction(action string) tea.Cmd {
-	id := m.SelectedID()
-	if id == "" {
+	c, ok := m.selectedContainer()
+	if !ok {
 		return nil
 	}
-	if m.cfg.ConfirmDestructive {
-		m.confirm = true
-		m.confirmFor = action
-		m.confirmID = id
-		return nil
+	if !m.cfg.ConfirmDestructive {
+		return m.doActionCmd(action, c.ID)
 	}
-	return m.doActionCmd(action, id)
+	danger := action == "delete"
+	steps := 1
+	if action == "delete" && c.Running() {
+		steps = 2 // deleting a running container is doubly confirmed
+	}
+	id := c.ID
+	m.modal = modalState{
+		kind:   modalConfirm,
+		title:  action + " container",
+		msg:    c.Name,
+		danger: danger,
+		steps:  steps,
+		action: func() tea.Cmd { return m.doActionCmd(action, id) },
+	}
+	return nil
+}
+
+// requestListDelete builds the delete modal for the active Images/Networks/Volumes tab.
+func (m *Model) requestListDelete() {
+	switch m.homeTab {
+	case homeImages:
+		if len(m.images) == 0 {
+			return
+		}
+		img := m.images[m.imgSel]
+		ref := img.Repo + ":" + img.Tag
+		if deps := m.containersUsingImage(ref); len(deps) > 0 {
+			m.modal = blockedModal("Cannot remove image", ref+"\n\nin use by "+strings.Join(deps, ", "))
+			return
+		}
+		id := img.ID
+		m.modal = modalState{kind: modalConfirm, title: "remove image", msg: ref, danger: true, steps: 1,
+			action: func() tea.Cmd { return m.removeImageCmd(id) }}
+	case homeVolumes:
+		if len(m.volumes) == 0 {
+			return
+		}
+		v := m.volumes[m.volSel]
+		if deps := m.containersUsingVolume(v.Name); len(deps) > 0 {
+			m.modal = blockedModal("Cannot remove volume", v.Name+"\n\nin use by "+strings.Join(deps, ", "))
+			return
+		}
+		name := v.Name
+		m.modal = modalState{kind: modalConfirm, title: "remove volume", msg: name, danger: true, steps: 1,
+			action: func() tea.Cmd { return m.removeVolumeCmd(name) }}
+	case homeNetworks:
+		if len(m.networks) == 0 {
+			return
+		}
+		net := m.networks[m.netSel]
+		if net.Name == "bridge" || net.Name == "host" || net.Name == "none" {
+			m.modal = blockedModal("Cannot remove network", net.Name+" is a predefined Docker network")
+			return
+		}
+		if deps := m.containersInNetwork(net.Name); len(deps) > 0 {
+			m.modal = blockedModal("Cannot remove network", net.Name+"\n\nin use by "+strings.Join(deps, ", "))
+			return
+		}
+		id := net.ID
+		m.modal = modalState{kind: modalConfirm, title: "remove network", msg: net.Name, danger: true, steps: 1,
+			action: func() tea.Cmd { return m.removeNetworkCmd(id) }}
+	}
+}
+
+func blockedModal(title, msg string) modalState {
+	return modalState{kind: modalBlocked, title: title, msg: msg, danger: true}
 }

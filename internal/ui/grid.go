@@ -13,6 +13,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// safeMarker shows whether a resource is safe to delete (no dependents).
+func safeMarker(deps int, locked bool, t Theme) string {
+	if locked {
+		return lipgloss.NewStyle().Foreground(t.Dim).Render("•")
+	}
+	if deps == 0 {
+		return lipgloss.NewStyle().Foreground(t.Healthy).Render("●") // safe to delete
+	}
+	return lipgloss.NewStyle().Foreground(t.Warn).Render("○") // in use
+}
+
 // windowSlice returns [start,end) of length<=height centered on sel.
 func windowSlice(n, sel, height int) (int, int) {
 	if height < 1 {
@@ -111,12 +122,7 @@ func (m *Model) viewGrid() string {
 	}
 
 	// footer
-	var footer string
-	if m.confirm {
-		footer = m.confirmBar()
-	} else {
-		footer = m.actionBar()
-	}
+	footer := m.actionBar()
 
 	// --- guard: no dimensions yet ---
 	if m.height <= 0 || m.width <= 0 {
@@ -428,8 +434,9 @@ func (m *Model) viewImages() string {
 	for _, img := range m.images {
 		totalSize += img.Size
 	}
-	rows := []string{bold.Render(fmt.Sprintf("  %-42s %8s %s", "REPOSITORY:TAG", "SIZE", "ID")) +
-		dim.Render(fmt.Sprintf("   (%d images, %s total)", len(m.images), HumanBytes(uint64(totalSize))))}
+	rows := []string{bold.Render(fmt.Sprintf("    %-42s %8s %s", "REPOSITORY:TAG", "SIZE", "ID")) +
+		dim.Render(fmt.Sprintf("   (%d, %s)  ", len(m.images), HumanBytes(uint64(totalSize)))) +
+		safeMarker(0, false, t) + dim.Render(" safe · ") + safeMarker(1, false, t) + dim.Render(" in use · d delete")}
 	innerH := listH - 3
 	start, end := windowSlice(len(m.images), m.imgSel, innerH)
 	m.listTop = lipgloss.Height(tab) + 2
@@ -445,7 +452,8 @@ func (m *Model) viewImages() string {
 		if len(id) > 19 {
 			id = id[7:19]
 		}
-		rows = append(rows, cursor+fmt.Sprintf("%-42s %8s %s",
+		deps := len(m.containersUsingImage(img.Repo + ":" + img.Tag))
+		rows = append(rows, cursor+safeMarker(deps, false, t)+" "+fmt.Sprintf("%-42s %8s %s",
 			ansi.Truncate(img.Repo+":"+img.Tag, 42, "…"), HumanBytes(uint64(img.Size)), id))
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
@@ -498,8 +506,9 @@ func (m *Model) viewVolumes() string {
 	for _, v := range m.volumes {
 		totalSize += v.Size
 	}
-	rows := []string{bold.Render(fmt.Sprintf("  %-32s %-8s %8s", "NAME", "DRIVER", "SIZE")) +
-		dim.Render(fmt.Sprintf("   (%d volumes, %s total)", len(m.volumes), HumanBytes(uint64(totalSize))))}
+	rows := []string{bold.Render(fmt.Sprintf("    %-32s %-8s %8s", "NAME", "DRIVER", "SIZE")) +
+		dim.Render(fmt.Sprintf("   (%d, %s)  ", len(m.volumes), HumanBytes(uint64(totalSize)))) +
+		safeMarker(0, false, t) + dim.Render(" safe · ") + safeMarker(1, false, t) + dim.Render(" in use · d delete")}
 	innerH := listH - 3
 	start, end := windowSlice(len(m.volumes), m.volSel, innerH)
 	m.listTop = lipgloss.Height(tab) + 2 // tab + panel top border + header row
@@ -511,7 +520,8 @@ func (m *Model) viewVolumes() string {
 		if i == m.volSel {
 			cursor = accent.Render("► ")
 		}
-		rows = append(rows, cursor+fmt.Sprintf("%-32s %-8s %8s",
+		deps := len(m.containersUsingVolume(v.Name))
+		rows = append(rows, cursor+safeMarker(deps, false, t)+" "+fmt.Sprintf("%-32s %-8s %8s",
 			ansi.Truncate(v.Name, 32, "…"), ansi.Truncate(v.Driver, 8, "…"), HumanBytes(uint64(v.Size))))
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
@@ -560,8 +570,9 @@ func (m *Model) viewNetworks() string {
 	dim := lipgloss.NewStyle().Foreground(t.Dim)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
-	rows := []string{bold.Render(fmt.Sprintf("  %-28s %-10s %-8s %s", "NAME", "DRIVER", "SCOPE", "ID")) +
-		dim.Render(fmt.Sprintf("   (%d networks)", len(m.networks)))}
+	rows := []string{bold.Render(fmt.Sprintf("    %-26s %-10s %-8s %s", "NAME", "DRIVER", "SCOPE", "ID")) +
+		dim.Render(fmt.Sprintf("   (%d)  ", len(m.networks))) +
+		safeMarker(0, false, t) + dim.Render(" safe · ") + safeMarker(1, false, t) + dim.Render(" in use · d delete")}
 	innerH := listH - 3
 	start, end := windowSlice(len(m.networks), m.netSel, innerH)
 	m.listTop = lipgloss.Height(tab) + 2 // tab + panel top border + header row
@@ -577,8 +588,10 @@ func (m *Model) viewNetworks() string {
 		if len(id) > 12 {
 			id = id[:12]
 		}
-		rows = append(rows, cursor+fmt.Sprintf("%-28s %-10s %-8s %s",
-			ansi.Truncate(net.Name, 28, "…"), ansi.Truncate(net.Driver, 10, "…"), ansi.Truncate(net.Scope, 8, "…"), id))
+		locked := net.Name == "bridge" || net.Name == "host" || net.Name == "none"
+		deps := len(m.containersInNetwork(net.Name))
+		rows = append(rows, cursor+safeMarker(deps, locked, t)+" "+fmt.Sprintf("%-26s %-10s %-8s %s",
+			ansi.Truncate(net.Name, 26, "…"), ansi.Truncate(net.Driver, 10, "…"), ansi.Truncate(net.Scope, 8, "…"), id))
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))

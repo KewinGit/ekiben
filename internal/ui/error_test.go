@@ -90,18 +90,18 @@ func TestActionFailureViaConfirmSetsLastErr(t *testing.T) {
 
 	m := newTestModelWith(fake)
 
-	// Trigger confirm dialog for stop.
+	// Trigger confirm modal for stop.
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	updated := m2.(*Model)
-	if !updated.confirm {
+	if updated.modal.kind != modalConfirm {
 		t.Fatal("expected confirm modal after 's'")
 	}
 
 	// Confirm the action — returns a cmd (doActionCmd), not yet an error.
 	m3, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	afterConfirm := m3.(*Model)
-	if afterConfirm.confirm {
-		t.Fatal("confirm should be cleared after answer")
+	if afterConfirm.modal.kind != modalNone {
+		t.Fatal("modal should be cleared after answer")
 	}
 	if cmd == nil {
 		t.Fatal("expected a cmd from confirmed action")

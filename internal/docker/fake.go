@@ -146,4 +146,43 @@ func (f *Fake) Networks(_ context.Context) ([]Network, error) {
 	return out, nil
 }
 
+func (f *Fake) RemoveImage(_ context.Context, id string, _ bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := f.ImagesList[:0]
+	for _, x := range f.ImagesList {
+		if x.ID != id {
+			out = append(out, x)
+		}
+	}
+	f.ImagesList = out
+	return nil
+}
+
+func (f *Fake) RemoveVolume(_ context.Context, name string, _ bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := f.VolumesList[:0]
+	for _, x := range f.VolumesList {
+		if x.Name != name {
+			out = append(out, x)
+		}
+	}
+	f.VolumesList = out
+	return nil
+}
+
+func (f *Fake) RemoveNetwork(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := f.NetworksList[:0]
+	for _, x := range f.NetworksList {
+		if x.ID != id {
+			out = append(out, x)
+		}
+	}
+	f.NetworksList = out
+	return nil
+}
+
 func (f *Fake) Close() error { return nil }

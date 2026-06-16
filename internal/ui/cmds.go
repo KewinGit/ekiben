@@ -6,7 +6,6 @@ import (
 
 	"github.com/KewinGit/ekiben/internal/docker"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // refreshCmd lists containers once.
@@ -84,32 +83,21 @@ func (m *Model) doActionCmd(action, id string) tea.Cmd {
 	}
 }
 
-// confirm handling
-func (m *Model) handleConfirmKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch k.String() {
-	case "y", "Y":
-		action, id := m.confirmFor, m.confirmID
-		m.confirm = false
-		return m, m.doActionCmd(action, id)
-	default: // anything else cancels
-		m.confirm = false
-	}
-	return m, nil
+// removeImageCmd / removeVolumeCmd / removeNetworkCmd run a resource removal
+// asynchronously and report the result via actionResultMsg.
+func (m *Model) removeImageCmd(id string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg { return actionResultMsg{client.RemoveImage(context.Background(), id, false)} }
 }
 
-func (m *Model) confirmBar() string {
-	return lipglossDim(m, "Confirm "+m.confirmFor+" "+shortID(m.confirmID)+"?  [y/N]")
+func (m *Model) removeVolumeCmd(name string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg { return actionResultMsg{client.RemoveVolume(context.Background(), name, false)} }
 }
 
-func lipglossDim(m *Model, s string) string {
-	return lipgloss.NewStyle().Foreground(m.theme.Dim).Render(s)
-}
-
-func shortID(id string) string {
-	if len(id) > 12 {
-		return id[:12]
-	}
-	return id
+func (m *Model) removeNetworkCmd(id string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg { return actionResultMsg{client.RemoveNetwork(context.Background(), id)} }
 }
 
 // focusLogsMsg carries the recent log output for the detail view.

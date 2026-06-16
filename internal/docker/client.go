@@ -24,5 +24,9 @@ type Client interface {
 	Unpause(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
 
+	RemoveImage(ctx context.Context, id string, force bool) error
+	RemoveVolume(ctx context.Context, name string, force bool) error
+	RemoveNetwork(ctx context.Context, id string) error
+
 	Close() error
 }

@@ -310,4 +310,17 @@ func (s *SDK) Networks(ctx context.Context) ([]Network, error) {
 	return out, nil
 }
 
+func (s *SDK) RemoveImage(ctx context.Context, id string, force bool) error {
+	_, err := s.cli.ImageRemove(ctx, id, image.RemoveOptions{Force: force, PruneChildren: true})
+	return err
+}
+
+func (s *SDK) RemoveVolume(ctx context.Context, name string, force bool) error {
+	return s.cli.VolumeRemove(ctx, name, force)
+}
+
+func (s *SDK) RemoveNetwork(ctx context.Context, id string) error {
+	return s.cli.NetworkRemove(ctx, id)
+}
+
 func (s *SDK) Close() error { return s.cli.Close() }
