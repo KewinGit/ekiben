@@ -43,8 +43,20 @@ func (m *Model) handleLogsMsg(msg logsMsg) {
 	}
 	m.logsID = msg.id
 	m.logsRaw = msg.content
-	m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+	m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
 	m.logsVP.GotoBottom()
+}
+
+// setLogsContent word-wraps the content to the viewport width so long log lines
+// always wrap instead of being cut off, then sets it on the viewport.
+func (m *Model) setLogsContent(s string) {
+	w := m.logsVP.Width
+	if w < 1 {
+		if w = m.width; w < 1 {
+			w = 80
+		}
+	}
+	m.logsVP.SetContent(lipgloss.NewStyle().Width(w).Render(s))
 }
 
 // updateLogs handles key input while in logs mode (scroll only).

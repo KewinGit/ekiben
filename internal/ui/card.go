@@ -3,11 +3,34 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/KewinGit/ekiben/internal/docker"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
+
+// humanDuration renders a duration compactly: 45s, 50m, 3h, 2d.
+func humanDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
+}
+
+// uptimeStr returns the compact uptime for a running container, or "".
+func uptimeStr(c docker.Container) string {
+	if !c.Running() || c.CreatedAt.IsZero() {
+		return ""
+	}
+	return humanDuration(time.Since(c.CreatedAt))
+}
 
 type CardInput struct {
 	Container docker.Container
@@ -33,7 +56,13 @@ func RenderCard(in CardInput) string {
 	for _, f := range in.Fields {
 		switch f {
 		case "status":
-			lines = append(lines, statusLine(in, t))
+			sl := statusLine(in, t)
+			if contains(in.Fields, "uptime") {
+				if up := uptimeStr(in.Container); up != "" {
+					sl += lipgloss.NewStyle().Foreground(t.Dim).Render(" · " + up)
+				}
+			}
+			lines = append(lines, sl)
 		case "health":
 			// folded into the status line for compactness; skip separate line
 		case "cpu":
@@ -58,7 +87,12 @@ func RenderCard(in CardInput) string {
 		case "pids":
 			lines = append(lines, fmt.Sprintf("%s %d", lbl.Render("pids"), in.Stats.PIDs))
 		case "uptime":
-			// rendered by caller-provided uptime if desired; omitted in v1 card
+			// shown on the status line; render standalone only if status is hidden
+			if !contains(in.Fields, "status") {
+				if up := uptimeStr(in.Container); up != "" {
+					lines = append(lines, fmt.Sprintf("%s %s", lbl.Render("up"), up))
+				}
+			}
 		}
 	}
 

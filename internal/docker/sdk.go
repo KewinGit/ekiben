@@ -47,15 +47,16 @@ func (s *SDK) List(ctx context.Context, all bool) ([]Container, error) {
 		st, health, exit := ParseState(su.State, su.Status)
 		ports := portsFromSummary(su.Ports)
 		out = append(out, Container{
-			ID:       su.ID,
-			Name:     name,
-			Project:  su.Labels["com.docker.compose.project"],
-			Service:  su.Labels["com.docker.compose.service"],
-			Image:    su.Image,
-			Status:   st,
-			Health:   health,
-			ExitCode: exit,
-			Ports:    ports,
+			ID:        su.ID,
+			Name:      name,
+			Project:   su.Labels["com.docker.compose.project"],
+			Service:   su.Labels["com.docker.compose.service"],
+			Image:     su.Image,
+			Status:    st,
+			Health:    health,
+			ExitCode:  exit,
+			Ports:     ports,
+			CreatedAt: time.Unix(su.Created, 0),
 		})
 	}
 	return out, nil

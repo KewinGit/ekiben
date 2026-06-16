@@ -298,7 +298,7 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.logsQuery += k.String()
 			}
 			if m.logsReady {
-				m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+				m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
 			}
 			return m, nil
 		}
@@ -313,7 +313,7 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.logsSearching = true
 			m.logsQuery = ""
 			if m.logsReady {
-				m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+				m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
 			}
 			return m, nil
 		case "f":
