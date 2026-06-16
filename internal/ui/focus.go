@@ -77,11 +77,7 @@ func (m *Model) viewFocus() string {
 	var info strings.Builder
 	info.WriteString(lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render(c.Name) +
 		dim.Render("  "+c.Project) + "\n")
-	statusln := statusLine(CardInput{Container: c, Theme: t}, t)
-	if up := uptimeStr(c); up != "" {
-		statusln += dim.Render(" · up " + up)
-	}
-	info.WriteString(statusln + "\n")
+	info.WriteString(statusLine(CardInput{Container: c, Theme: t}, t, uptimeStr(c)) + "\n")
 	imgLine := c.Image
 	if sz, ok := m.findImageSize(c.Image); ok {
 		imgLine += "  " + HumanBytes(uint64(sz))

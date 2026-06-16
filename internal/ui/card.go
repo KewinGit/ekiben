@@ -56,13 +56,11 @@ func RenderCard(in CardInput) string {
 	for _, f := range in.Fields {
 		switch f {
 		case "status":
-			sl := statusLine(in, t)
+			up := ""
 			if contains(in.Fields, "uptime") {
-				if up := uptimeStr(in.Container); up != "" {
-					sl += lipgloss.NewStyle().Foreground(t.Dim).Render(" · " + up)
-				}
+				up = uptimeStr(in.Container)
 			}
-			lines = append(lines, sl)
+			lines = append(lines, statusLine(in, t, up))
 		case "health":
 			// folded into the status line for compactness; skip separate line
 		case "cpu":
@@ -138,7 +136,9 @@ func cardTitle(in CardInput, t Theme) string {
 	return fmt.Sprintf("%s %s%s", dot, in.Container.Name, marker)
 }
 
-func statusLine(in CardInput, t Theme) string {
+// statusLine renders the status line. When uptime != "" it is inserted between
+// "up" and the health word, i.e. "up · <uptime> · healthy".
+func statusLine(in CardInput, t Theme, uptime string) string {
 	c := in.Container
 	switch c.Status {
 	case docker.StatusExited:
@@ -148,16 +148,19 @@ func statusLine(in CardInput, t Theme) string {
 	case docker.StatusPaused:
 		return lipgloss.NewStyle().Foreground(t.Warn).Render("paused")
 	}
+	s := "up"
+	if uptime != "" {
+		s += lipgloss.NewStyle().Foreground(t.Dim).Render(" · " + uptime)
+	}
 	switch c.Health {
 	case docker.HealthHealthy:
-		return "up · " + lipgloss.NewStyle().Foreground(t.Healthy).Render("healthy")
+		s += " · " + lipgloss.NewStyle().Foreground(t.Healthy).Render("healthy")
 	case docker.HealthUnhealthy:
-		return "up · " + lipgloss.NewStyle().Foreground(t.Problem).Render("unhealthy")
+		s += " · " + lipgloss.NewStyle().Foreground(t.Problem).Render("unhealthy")
 	case docker.HealthStarting:
-		return "up · " + lipgloss.NewStyle().Foreground(t.Warn).Render("starting")
-	default:
-		return "up"
+		s += " · " + lipgloss.NewStyle().Foreground(t.Warn).Render("starting")
 	}
+	return s
 }
 
 func dotFor(c docker.Container, t Theme) string {

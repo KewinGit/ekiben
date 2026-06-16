@@ -301,6 +301,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		m.homeTab = (m.homeTab + 1) % homeTabCount
 		return m, m.homeTabSwitchCmd()
+	case "shift+tab":
+		m.homeTab = (m.homeTab - 1 + homeTabCount) % homeTabCount
+		return m, m.homeTabSwitchCmd()
 	case "1":
 		m.homeTab = homeContainers
 		return m, m.homeTabSwitchCmd()
