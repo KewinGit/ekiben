@@ -61,11 +61,13 @@ type Model struct {
 	focusInspect bool
 
 	// scrollable grid state
-	scrollY    int        // vertical scroll offset in body lines
-	cardRects  []cardRect // hit-test rects from last render
-	bodyTop    int        // screen line where body starts (= header height)
-	gridAvailH int        // visible body height from last render
-	gridBodyH  int        // total body height from last render
+	scrollY      int        // vertical scroll offset in body lines
+	cardRects    []cardRect // hit-test rects from last render
+	bodyTop      int        // screen line where body content starts
+	bodyLeft     int        // screen column where body content starts
+	gridAvailH   int        // visible body height from last render
+	gridBodyH    int        // total body height from last render
+	gridContentW int        // body content width (inside the panel border)
 
 	// confirm modal
 	confirm    bool
@@ -168,7 +170,13 @@ func (m *Model) SelectedID() string {
 	return m.order[m.selected]
 }
 
-func (m *Model) recomputeLayout() { m.cols = Columns(m.width) }
+func (m *Model) recomputeLayout() {
+	m.gridContentW = m.width - 2
+	if m.gridContentW < MinCardWidth {
+		m.gridContentW = MinCardWidth
+	}
+	m.cols = Columns(m.gridContentW)
+}
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -417,8 +425,9 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if msg.Action != tea.MouseActionPress {
 			return m, nil
 		}
+		bodyX := msg.X - m.bodyLeft
 		bodyY := msg.Y - m.bodyTop + m.scrollY
-		id, ok := cardAt(m.cardRects, msg.X, bodyY)
+		id, ok := cardAt(m.cardRects, bodyX, bodyY)
 		if ok {
 			for i, oid := range m.order {
 				if oid == id {

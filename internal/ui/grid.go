@@ -76,13 +76,21 @@ func (m *Model) viewGrid() string {
 	headerH := lipgloss.Height(header)
 	footerH := lipgloss.Height(footer)
 	errH := len(errBannerLines)
-	bodyTop := headerH + 1 // +1 for the "\n" separator after header
-	// availH = total screen minus header row (with separator), error banner, footer
-	availH := m.height - bodyTop - errH - footerH - 1 // -1 for separator before footer
+
+	// The grid lives inside a rounded panel border (1 line/col on each side).
+	m.gridContentW = m.width - 2
+	if m.gridContentW < MinCardWidth {
+		m.gridContentW = MinCardWidth
+	}
+	// Screen layout: header(headerH) + errBanner(errH) + panel[ top(1) + content(availH) + bottom(1) ]
+	//                + separator(1) + footer(footerH)
+	availH := m.height - headerH - errH - footerH - 3
 	if availH < 1 {
 		availH = 1
 	}
-	m.bodyTop = bodyTop + errH
+	// content first row sits below header, error banner, and the panel's top border
+	m.bodyTop = headerH + errH + 1
+	m.bodyLeft = 1 // panel left border
 	m.gridAvailH = availH
 
 	// --- build full body lines + rects ---
@@ -106,11 +114,15 @@ func (m *Model) viewGrid() string {
 		end = totalH
 	}
 	windowLines := bodyLines[m.scrollY:end]
-
-	// pad to availH to prevent ghosting
-	for len(windowLines) < availH {
+	for len(windowLines) < availH { // pad to avoid ghosting
 		windowLines = append(windowLines, "")
 	}
+
+	panel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.Border).
+		Width(m.gridContentW).
+		Render(strings.Join(windowLines, "\n"))
 
 	// --- assemble ---
 	var b strings.Builder
@@ -118,7 +130,7 @@ func (m *Model) viewGrid() string {
 	for _, l := range errBannerLines {
 		b.WriteString(l + "\n")
 	}
-	b.WriteString(strings.Join(windowLines, "\n"))
+	b.WriteString(panel)
 	b.WriteString("\n" + footer)
 	return b.String()
 }
@@ -305,7 +317,7 @@ func (m *Model) groupLayout(g model.Group) (cols, cardW int) {
 			minW = w
 		}
 	}
-	avail := m.width
+	avail := m.gridContentW
 	if avail < MinCardWidth {
 		avail = MinCardWidth
 	}

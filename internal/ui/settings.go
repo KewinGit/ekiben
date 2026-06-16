@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/KewinGit/ekiben/internal/config"
+	"github.com/KewinGit/ekiben/internal/version"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -14,7 +16,10 @@ const (
 	tabGroups settingsTab = iota
 	tabFields
 	tabGeneral
+	tabInfo
 )
+
+const settingsTabCount = 4
 
 // canonicalFields defines the canonical order for card fields.
 var canonicalFields = []string{"status", "health", "cpu", "mem", "net", "port", "uptime", "image", "pids"}
@@ -100,7 +105,7 @@ func (m *Model) updateSettings(k tea.KeyMsg) tea.Cmd {
 	key := k.String()
 	switch key {
 	case "tab":
-		m.settingsTab = (m.settingsTab + 1) % 3
+		m.settingsTab = (m.settingsTab + 1) % settingsTabCount
 		m.settingsSel = 0
 	case "up", "k":
 		if m.settingsSel > 0 {
@@ -171,7 +176,7 @@ func (m *Model) saveSettings() {
 
 func (m *Model) viewSettings() string {
 	t := m.theme
-	tabs := []string{"Groups", "Card fields", "General"}
+	tabs := []string{"Groups", "Card fields", "General", "Info"}
 	var head strings.Builder
 	for i, name := range tabs {
 		style := lipgloss.NewStyle().Foreground(t.Dim)
@@ -223,8 +228,32 @@ func (m *Model) viewSettings() string {
 			body.WriteString(cursor + row.label + " " + row.value + "\n")
 		}
 		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[←/→] cycle  [space] toggle  [enter] save"))
+	case tabInfo:
+		total := 0
+		for _, g := range m.groups {
+			total += len(g.Containers)
+		}
+		lbl := lipgloss.NewStyle().Foreground(t.Label)
+		body.WriteString(lbl.Render("ekiben   ") + version.String() + "\n")
+		body.WriteString(lbl.Render("config   ") + config.Path() + "\n")
+		body.WriteString(lbl.Render("groups   ") + fmt.Sprintf("%d", len(m.groups)) + "\n")
+		body.WriteString(lbl.Render("contain. ") + fmt.Sprintf("%d", total) + "\n\n")
+		keys := lipgloss.NewStyle().Foreground(t.Dim)
+		body.WriteString(keys.Render("keys: ↑↓←→ navigate · click select · wheel scroll\n"))
+		body.WriteString(keys.Render("      enter focus · l logs · s/r/p/a/u/d actions\n"))
+		body.WriteString(keys.Render("      space collapse · c settings · q quit"))
 	}
-	return head.String() + "\n\n" + body.String()
+
+	content := head.String() + "\n\n" + body.String()
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(t.Border).
+		Padding(0, 1).
+		Render(content)
+	if m.width > 0 && m.height > 0 {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	}
+	return box
 }
 
 func contains(ss []string, s string) bool {
