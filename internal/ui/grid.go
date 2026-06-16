@@ -490,25 +490,27 @@ func (m *Model) groupHeader(g groupLike) string {
 // groupLayout computes, for a single compose group, how many columns fit and how
 // wide each card is, sized so the longest container name in THIS group is readable.
 func (m *Model) groupLayout(g model.Group) (cols, cardW int) {
-	minW := MinCardWidth
+	// Width = just enough to fit the longest name in THIS group (+ chrome).
+	// We do NOT stretch cards to fill the row; the extra space is used by
+	// packing MORE columns, not by widening each card.
+	cardW = MinCardWidth
 	for _, c := range g.Containers {
-		// name + chrome: status dot, space, " ►" marker, 2 borders, slack
-		if w := lipgloss.Width(c.Name) + 8; w > minW {
-			minW = w
+		// name + chrome: status dot (1) + space (1) + " ►" marker (2) + borders (2)
+		if w := lipgloss.Width(c.Name) + 6; w > cardW {
+			cardW = w
 		}
 	}
 	avail := m.gridContentW
 	if avail < MinCardWidth {
 		avail = MinCardWidth
 	}
-	if minW > avail {
-		minW = avail
+	if cardW > avail {
+		cardW = avail
 	}
-	cols = (avail + CardGap) / (minW + CardGap)
+	cols = (avail + CardGap) / (cardW + CardGap)
 	if cols < 1 {
 		cols = 1
 	}
-	cardW = CardWidth(avail, cols)
 	return cols, cardW
 }
 
