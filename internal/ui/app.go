@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"sort"
 	"time"
 
 	"github.com/KewinGit/ekiben/internal/config"
@@ -312,14 +311,4 @@ func (m *Model) requestAction(action string) {
 		return
 	}
 	_ = m.doAction(action, id)
-}
-
-// sortedGroupNames is used by settings later.
-func (m *Model) sortedGroupNames() []string {
-	out := []string{}
-	for _, g := range m.groups {
-		out = append(out, g.Name)
-	}
-	sort.Strings(out)
-	return out
 }
