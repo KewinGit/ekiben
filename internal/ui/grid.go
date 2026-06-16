@@ -135,9 +135,13 @@ func (m *Model) viewGrid() string {
 		if len(body) > ph-3 {
 			body = body[len(body)-(ph-3):]
 		}
-		head := lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true).Render(m.composeTitle + " …")
+		suffix, bc := " …", m.theme.Accent
+		if m.composeDone {
+			suffix, bc = "  ✓ done — press any key to close", m.theme.Healthy
+		}
+		head := lipgloss.NewStyle().Foreground(bc).Bold(true).Render(m.composeTitle + suffix)
 		composePane = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-			BorderForeground(m.theme.Accent).Width(m.width - 2).Height(ph - 2).
+			BorderForeground(bc).Width(m.width - 2).Height(ph - 2).
 			Render(head + "\n" + lipgloss.NewStyle().Foreground(m.theme.Dim).Render(strings.Join(body, "\n")))
 		composePaneH = lipgloss.Height(composePane) + 1 // +1 separator
 	}

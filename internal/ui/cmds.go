@@ -53,6 +53,7 @@ func (m *Model) startComposeCmd(title string, args []string) tea.Cmd {
 	ch := make(chan composeEvent, 256)
 	m.composeCh = ch
 	m.composeRunning = true
+	m.composeDone = false
 	m.composeTitle = title
 	m.composeLines = nil
 

@@ -149,6 +149,7 @@ type Model struct {
 
 	// streaming compose output pane (Containers tab)
 	composeRunning   bool
+	composeDone      bool // finished; pane stays until a key is pressed
 	composeTitle     string
 	composeLines     []string
 	composeCh        chan composeEvent
@@ -287,7 +288,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
 	case composeEvent:
 		if msg.done {
-			m.composeRunning = false
 			m.composeCh = nil
 			if msg.err != nil {
 				m.lastErr = msg.err
@@ -298,6 +298,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.composePendingUp = nil
 				return m, m.startComposeCmd("compose up: "+g.project, composeArgs(g, "up", "-d"))
 			}
+			// keep the pane open until the user presses a key
+			m.composeDone = true
 			return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
 		}
 		m.composeLines = append(m.composeLines, msg.line)
@@ -349,6 +351,13 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global quit: ctrl+c always; 'q' everywhere except while typing a log search.
 	if k.Type == tea.KeyCtrlC {
 		return m, tea.Quit
+	}
+	// A finished compose pane stays until any key dismisses it.
+	if m.composeDone {
+		m.composeRunning = false
+		m.composeDone = false
+		m.composeLines = nil
+		return m, nil
 	}
 	if k.String() == "q" && !(m.mode == viewFocus && m.logsSearching) {
 		return m, tea.Quit
