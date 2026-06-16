@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/KewinGit/ekiben/internal/docker"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -71,6 +72,14 @@ func (m *Model) startComposeCmd(title string, args []string) tea.Cmd {
 	m.composeDone = false
 	m.composeTitle = title
 	m.composeLines = nil
+	w := m.width - 4
+	if w < 10 {
+		w = 10
+	}
+	m.composeVP = viewport.New(w, 8)
+	m.composeVP.MouseWheelEnabled = true
+	m.composeReady = true
+	m.composeVP.SetContent("")
 
 	cmd := exec.Command("docker", args...)
 	pr, pw := io.Pipe()
@@ -357,8 +366,8 @@ func (m *Model) loadSysCmd() tea.Cmd {
 	}
 }
 
-// pruneCmd streams `docker system prune -f` into the in-app pane.
+// pruneCmd streams `docker system prune -f` into the in-app pane (shown on the
+// current tab, no tab switch).
 func (m *Model) pruneCmd() tea.Cmd {
-	m.homeTab = homeContainers // show the streaming pane
 	return m.startComposeCmd("docker system prune", []string{"system", "prune", "-f"})
 }

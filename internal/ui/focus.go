@@ -175,7 +175,9 @@ func (m *Model) viewFocus() string {
 	}
 	errs, warns := countLogIssues(m.logsRaw)
 	if errs > 0 || warns > 0 {
-		badges = append(badges, dim.Render(fmt.Sprintf("logs: %d err / %d warn", errs, warns)))
+		errPart := lipgloss.NewStyle().Foreground(t.Problem).Render(fmt.Sprintf("%d err", errs))
+		warnPart := lipgloss.NewStyle().Foreground(t.Orange).Render(fmt.Sprintf("%d warn", warns))
+		badges = append(badges, dim.Render("logs: ")+errPart+dim.Render(" / ")+warnPart)
 	}
 	if len(badges) > 0 {
 		info.WriteString(lbl.Render("     ") + " " + trunc(strings.Join(badges, "   ")))

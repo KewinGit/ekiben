@@ -121,9 +121,17 @@ func RenderCard(in CardInput) string {
 		case "errors":
 			v := lipgloss.NewStyle().Foreground(t.Dim).Render("—")
 			if in.LogKnown {
+				errStyle := lipgloss.NewStyle()
+				if in.LogErrs > 0 {
+					errStyle = errStyle.Foreground(t.Problem)
+				}
+				warnStyle := lipgloss.NewStyle()
+				if in.LogWarns > 0 {
+					warnStyle = warnStyle.Foreground(t.Orange)
+				}
 				v = fmt.Sprintf("%s %s",
-					lipgloss.NewStyle().Foreground(t.Problem).Render(fmt.Sprintf("%d err", in.LogErrs)),
-					lipgloss.NewStyle().Foreground(t.Warn).Render(fmt.Sprintf("%d warn", in.LogWarns)))
+					errStyle.Render(fmt.Sprintf("%d err", in.LogErrs)),
+					warnStyle.Render(fmt.Sprintf("%d warn", in.LogWarns)))
 			}
 			lines = append(lines, lbl.Render("log")+" "+v)
 		case "uptime":

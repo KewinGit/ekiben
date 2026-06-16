@@ -127,22 +127,10 @@ func (m *Model) viewGrid() string {
 	// footer
 	footer := m.actionBar()
 
-	// streaming compose output pane (shown while a compose action runs)
-	composePane, composePaneH := "", 0
-	if m.composeRunning {
-		const ph = 12 // total pane height incl. border
-		body := m.composeLines
-		if len(body) > ph-3 {
-			body = body[len(body)-(ph-3):]
-		}
-		suffix, bc := " …", m.theme.Accent
-		if m.composeDone {
-			suffix, bc = "  ✓ done — press any key to close", m.theme.Healthy
-		}
-		head := lipgloss.NewStyle().Foreground(bc).Bold(true).Render(m.composeTitle + suffix)
-		composePane = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-			BorderForeground(bc).Width(m.width - 2).Height(ph - 2).
-			Render(head + "\n" + lipgloss.NewStyle().Foreground(m.theme.Dim).Render(strings.Join(body, "\n")))
+	// streaming compose/prune output pane (shown while a command runs)
+	composePane := m.composePaneView()
+	composePaneH := 0
+	if composePane != "" {
 		composePaneH = lipgloss.Height(composePane) + 1 // +1 separator
 	}
 
@@ -313,6 +301,54 @@ func (m *Model) buildBodyLines() ([]string, []cardRect) {
 	}
 
 	return lines, rects
+}
+
+// composePaneView renders the streaming compose/prune output pane, or "" when
+// idle. The body is a scrollable viewport so the full log can be reviewed.
+func (m *Model) composePaneView() string {
+	if !m.composeRunning {
+		return ""
+	}
+	const ph = 12      // total pane height incl. border
+	bodyH := ph - 3    // inner height minus the head line
+	vpW := m.width - 4 // box content width minus the scrollbar column
+	if vpW < 10 {
+		vpW = 10
+	}
+	m.composeVP.Width = vpW
+	m.composeVP.Height = bodyH
+
+	suffix, bc := "  ↑↓/wheel scroll", m.theme.Accent
+	if m.composeDone {
+		suffix, bc = "  ✓ done — ↑↓ scroll · esc/enter close", m.theme.Healthy
+	}
+	head := lipgloss.NewStyle().Foreground(bc).Bold(true).Render(m.composeTitle + suffix)
+	bar := scrollbar(bodyH, m.composeVP.TotalLineCount(), m.composeVP.YOffset, bodyH, m.theme)
+	body := lipgloss.JoinHorizontal(lipgloss.Top, m.composeVP.View(), bar)
+	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
+		BorderForeground(bc).Width(m.width - 2).Height(ph - 2).
+		Render(head + "\n" + body)
+}
+
+// refreshComposeVP rebuilds the compose viewport content from composeLines,
+// word-wrapped to the viewport width. When follow is true it sticks to the
+// bottom so streaming output stays visible.
+func (m *Model) refreshComposeVP(follow bool) {
+	if !m.composeReady {
+		return
+	}
+	w := m.composeVP.Width
+	if w < 1 {
+		w = m.width - 4
+	}
+	if w < 1 {
+		w = 1
+	}
+	content := lipgloss.NewStyle().Foreground(m.theme.Dim).Width(w).Render(strings.Join(m.composeLines, "\n"))
+	m.composeVP.SetContent(content)
+	if follow {
+		m.composeVP.GotoBottom()
+	}
 }
 
 // tableColSpec is the label and width of a table column for a card field.
@@ -886,7 +922,11 @@ func (m *Model) viewInfo() string {
 
 	keys := dim.Render("keys  tab/1-5 switch · c settings · q quit · (containers) v cards/table · enter focus · e shell · S/X/R compose")
 
-	return m.padToHeight(tab + "\n" + banner + "\n" + tagline + "\n\n" + cols + "\n" + diskBox + "\n" + keys)
+	content := tab + "\n" + banner + "\n" + tagline + "\n\n" + cols + "\n" + diskBox + "\n" + keys
+	if pane := m.composePaneView(); pane != "" {
+		content += "\n" + pane
+	}
+	return m.padToHeight(content)
 }
 
 func (m *Model) groupHeader(g groupLike) string {

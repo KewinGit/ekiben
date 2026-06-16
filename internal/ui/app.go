@@ -158,11 +158,13 @@ type Model struct {
 
 	// streaming compose output pane (Containers tab)
 	composeRunning   bool
-	composeDone      bool // finished; pane stays until a key is pressed
+	composeDone      bool // finished; pane stays until dismissed
 	composeTitle     string
 	composeLines     []string
 	composeCh        chan composeEvent
 	composePendingUp *composeRef // restart: run `up` after `down` completes
+	composeVP        viewport.Model
+	composeReady     bool
 
 	lastErr error
 	cfgPath string // where to persist config; empty disables saving (tests)
@@ -320,14 +322,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.composePendingUp = nil
 				return m, m.startComposeCmd("compose up: "+g.project, composeArgs(g, "up", "-d"))
 			}
-			// keep the pane open until the user presses a key
+			// keep the pane open (scrollable) until dismissed
 			m.composeDone = true
+			m.refreshComposeVP(true)
 			return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd(), m.loadDiskCmd())
 		}
 		m.composeLines = append(m.composeLines, msg.line)
-		if len(m.composeLines) > 500 {
-			m.composeLines = m.composeLines[len(m.composeLines)-500:]
+		if len(m.composeLines) > 2000 {
+			m.composeLines = m.composeLines[len(m.composeLines)-2000:]
 		}
+		m.refreshComposeVP(true) // follow while running
 		return m, readComposeCmd(m.composeCh)
 	case focusLogsMsg:
 		if msg.id == m.SelectedID() {
@@ -374,11 +378,28 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if k.Type == tea.KeyCtrlC {
 		return m, tea.Quit
 	}
-	// A finished compose pane stays until any key dismisses it.
-	if m.composeDone {
-		m.composeRunning = false
-		m.composeDone = false
-		m.composeLines = nil
+	// Compose/prune output pane is open: scroll keys move the viewport so the
+	// whole log can be reviewed; when finished, any other key dismisses it.
+	if m.composeRunning {
+		switch k.String() {
+		case "up", "k", "down", "j", "pgup", "pgdown", "b", "f", "u", "d":
+			var cmd tea.Cmd
+			m.composeVP, cmd = m.composeVP.Update(k)
+			return m, cmd
+		case "g", "home":
+			m.composeVP.GotoTop()
+			return m, nil
+		case "G", "end":
+			m.composeVP.GotoBottom()
+			return m, nil
+		}
+		if m.composeDone {
+			m.composeRunning = false
+			m.composeDone = false
+			m.composeReady = false
+			m.composeLines = nil
+			return m, nil
+		}
 		return m, nil
 	}
 	if k.String() == "q" && !(m.mode == viewFocus && m.logsSearching) {
@@ -746,6 +767,12 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+	}
+	// Compose/prune pane open: forward wheel events to its viewport.
+	if m.composeRunning {
+		var cmd tea.Cmd
+		m.composeVP, cmd = m.composeVP.Update(msg)
+		return m, cmd
 	}
 	if m.mode != viewGrid {
 		return m, nil
