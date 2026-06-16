@@ -269,3 +269,16 @@ func (m *Model) loadNetworksCmd() tea.Cmd {
 		return networksMsg(nets)
 	}
 }
+
+type diskMsg docker.DiskUsageInfo
+
+func (m *Model) loadDiskCmd() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		d, err := client.DiskUsage(context.Background())
+		if err != nil {
+			return diskMsg{}
+		}
+		return diskMsg(d)
+	}
+}

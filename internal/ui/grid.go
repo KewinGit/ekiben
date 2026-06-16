@@ -695,6 +695,25 @@ func (m *Model) viewInfo() string {
 	body.WriteString(lbl.Render("config   ") + config.Path() + "\n\n")
 	body.WriteString(lbl.Render("monitoring  ") +
 		fmt.Sprintf("%d containers · %d images · %d volumes · %d networks", total, len(m.images), len(m.volumes), len(m.networks)) + "\n\n")
+
+	// disk usage (docker system df) with reclaimable preview
+	d := m.disk
+	reclaimRow := func(label string, size, reclaim int64) string {
+		r := dim.Render("—")
+		if reclaim > 0 {
+			r = lipgloss.NewStyle().Foreground(t.Healthy).Render(HumanBytes(uint64(reclaim)) + " reclaimable")
+		}
+		return lbl.Render(label) + fmt.Sprintf(" %10s   ", HumanBytes(uint64(size))) + r
+	}
+	body.WriteString(lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render("disk usage") +
+		dim.Render("  (docker system df)") + "\n")
+	body.WriteString(reclaimRow("images     ", d.ImagesSize, d.ImagesReclaim) + "\n")
+	body.WriteString(reclaimRow("containers ", d.ContainersSize, d.ContainersReclaim) + "\n")
+	body.WriteString(reclaimRow("volumes    ", d.VolumesSize, d.VolumesReclaim) + "\n")
+	body.WriteString(reclaimRow("build cache", d.BuildCacheSize, d.BuildCacheReclaim) + "\n")
+	body.WriteString(lbl.Render("→ prune    ") + " " +
+		lipgloss.NewStyle().Foreground(t.Warn).Bold(true).Render("~"+HumanBytes(uint64(d.TotalReclaim()))+" reclaimable") +
+		dim.Render("  (docker system prune)") + "\n\n")
 	body.WriteString(dim.Render("keys  tab / 1-5  switch tab     c  settings     q  quit") + "\n")
 	body.WriteString(dim.Render("      ↑↓←→ navigate · click select · wheel scroll · enter focus") + "\n")
 	body.WriteString(dim.Render("      l logs · e shell · s/r/p/a/u/d actions · space collapse") + "\n")

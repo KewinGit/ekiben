@@ -189,4 +189,6 @@ func (f *Fake) RemoveNetwork(_ context.Context, id string) error {
 	return nil
 }
 
+func (f *Fake) DiskUsage(_ context.Context) (DiskUsageInfo, error) { return DiskUsageInfo{}, nil }
+
 func (f *Fake) Close() error { return nil }

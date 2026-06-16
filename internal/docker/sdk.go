@@ -367,4 +367,42 @@ func (s *SDK) RemoveNetwork(ctx context.Context, id string) error {
 	return s.cli.NetworkRemove(ctx, id)
 }
 
+func (s *SDK) DiskUsage(ctx context.Context) (DiskUsageInfo, error) {
+	du, err := s.cli.DiskUsage(ctx, types.DiskUsageOptions{})
+	if err != nil {
+		return DiskUsageInfo{}, err
+	}
+	info := DiskUsageInfo{ImagesSize: du.LayersSize}
+	for _, img := range du.Images {
+		if img.Containers == 0 {
+			r := img.Size - img.SharedSize
+			if r < 0 {
+				r = img.Size
+			}
+			info.ImagesReclaim += r
+		}
+	}
+	for _, c := range du.Containers {
+		info.ContainersSize += c.SizeRw
+		if c.State != "running" {
+			info.ContainersReclaim += c.SizeRw
+		}
+	}
+	for _, v := range du.Volumes {
+		if v.UsageData != nil {
+			info.VolumesSize += v.UsageData.Size
+			if v.UsageData.RefCount == 0 {
+				info.VolumesReclaim += v.UsageData.Size
+			}
+		}
+	}
+	for _, bc := range du.BuildCache {
+		info.BuildCacheSize += bc.Size
+		if !bc.InUse {
+			info.BuildCacheReclaim += bc.Size
+		}
+	}
+	return info, nil
+}
+
 func (s *SDK) Close() error { return s.cli.Close() }

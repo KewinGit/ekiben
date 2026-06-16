@@ -141,6 +141,7 @@ type Model struct {
 	imgSel   int // selected row in the Images tab
 	netSel   int // selected row in the Networks tab
 	volSel   int // selected row in the Volumes tab
+	disk     docker.DiskUsageInfo
 
 	// hit-testing for the Networks/Volumes list (set during render)
 	listTop     int // screen Y of the first data row
@@ -182,7 +183,7 @@ func cloneBoolMap(in map[string]bool) map[string]bool {
 
 func (m *Model) Init() tea.Cmd {
 	m.eventCh, _ = m.client.Events(context.Background())
-	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
+	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd(), m.loadDiskCmd())
 }
 
 // applyContainers rebuilds groups + the flattened navigation order.
@@ -274,6 +275,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case networksMsg:
 		m.networks = []docker.Network(msg)
 		return m, nil
+	case diskMsg:
+		m.disk = docker.DiskUsageInfo(msg)
+		return m, nil
 	case eventMsg:
 		return m, tea.Batch(m.refreshCmd(), m.waitForEvent())
 	case actionResultMsg:
@@ -281,11 +285,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastErr = msg.err
 		}
 		// reload everything: an action may have changed containers/images/volumes/networks
-		return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
+		return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd(), m.loadDiskCmd())
 	case execDoneMsg:
 		// exec released the terminal: re-enable mouse, force a clean repaint, reload.
 		return m, tea.Batch(tea.EnableMouseCellMotion, tea.ClearScreen,
-			m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
+			m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd(), m.loadDiskCmd())
 	case composeEvent:
 		if msg.done {
 			m.composeCh = nil
@@ -300,7 +304,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// keep the pane open until the user presses a key
 			m.composeDone = true
-			return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
+			return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd(), m.loadDiskCmd())
 		}
 		m.composeLines = append(m.composeLines, msg.line)
 		if len(m.composeLines) > 500 {
@@ -586,6 +590,8 @@ func (m *Model) homeTabSwitchCmd() tea.Cmd {
 		return m.loadVolumesCmd()
 	case homeNetworks:
 		return m.loadNetworksCmd()
+	case homeInfo:
+		return m.loadDiskCmd()
 	}
 	return nil
 }

@@ -90,6 +90,23 @@ type InspectInfo struct {
 	HealthReason  string // last healthcheck output, if any
 }
 
+// DiskUsageInfo summarizes `docker system df`: total and reclaimable bytes per
+// category (reclaimable ≈ what `docker system prune` would free).
+type DiskUsageInfo struct {
+	ImagesSize, ImagesReclaim         int64
+	ContainersSize, ContainersReclaim int64
+	VolumesSize, VolumesReclaim       int64
+	BuildCacheSize, BuildCacheReclaim int64
+}
+
+func (d DiskUsageInfo) TotalSize() int64 {
+	return d.ImagesSize + d.ContainersSize + d.VolumesSize + d.BuildCacheSize
+}
+
+func (d DiskUsageInfo) TotalReclaim() int64 {
+	return d.ImagesReclaim + d.ContainersReclaim + d.VolumesReclaim + d.BuildCacheReclaim
+}
+
 // Stats is a single sample of live container metrics.
 type Stats struct {
 	ID       string

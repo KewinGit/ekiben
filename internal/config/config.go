@@ -18,6 +18,7 @@ type Config struct {
 	CardFields         []string        `yaml:"card_fields"`
 	GroupOrder         []string        `yaml:"group_order"`
 	GroupCollapsed     map[string]bool `yaml:"group_collapsed"`
+	View               string          `yaml:"view"` // cards | table
 }
 
 func Default() Config {

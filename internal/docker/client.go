@@ -17,6 +17,7 @@ type Client interface {
 	Images(ctx context.Context) ([]Image, error)
 	Volumes(ctx context.Context) ([]Volume, error)
 	Networks(ctx context.Context) ([]Network, error)
+	DiskUsage(ctx context.Context) (DiskUsageInfo, error)
 
 	Start(ctx context.Context, id string) error
 	Stop(ctx context.Context, id string) error
