@@ -33,7 +33,7 @@ func currentGroupNames(m *Model) []string {
 func (m *Model) moveGroup(delta int) {
 	i := m.settingsSel
 	j := i + delta
-	if j < 0 || j >= len(m.settingsGroups) {
+	if i < 0 || i >= len(m.settingsGroups) || j < 0 || j >= len(m.settingsGroups) {
 		return
 	}
 	m.settingsGroups[i], m.settingsGroups[j] = m.settingsGroups[j], m.settingsGroups[i]

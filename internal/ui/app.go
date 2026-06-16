@@ -173,10 +173,6 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.mode == viewSettings {
-		if k.String() == "esc" {
-			m.mode = viewGrid
-			return m, nil
-		}
 		return m, m.updateSettings(k)
 	}
 	if m.mode == viewLogs {
