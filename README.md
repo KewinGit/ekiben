@@ -19,21 +19,21 @@ Ships as a **single static binary**: drop it on a server and run. No runtime dep
 
 ---
 
-## ✨ Features
+## Features
 
-- 🍱 **Bento-grid dashboard** — containers as cards, grouped per Compose project. Each group header shows aggregate CPU / MEM / NET / PIDs; card width adapts per group so names stay readable; collapse/expand groups (remembered across runs).
-- 📈 **Live metrics** — CPU & RAM **sparklines**, memory %, network I/O, host ports, exposed ports, health and uptime. Pick exactly which fields appear on a card.
-- 🗂 **Top-level tabs** — `Containers · Images · Volumes · Networks · Info`, switchable by keyboard (`tab` / `shift+tab` / `1`–`5`) or mouse click.
-- 🔎 **Detail view** — full status + CPU/RAM history, image, networks and mounted volumes, plus the container's **logs in a scrollable pane** with follow, search and word-wrap.
-- 🔗 **Dependency insight** — select any image / volume / network to see exactly **which containers use it**, and a clear **STATUS** column: `safe delete`, `in use (N)` or `locked`.
-- ⚠️ **Tiered, safe deletes** — a single confirm for safe removals, a **block** with the blocking containers when something is in use, and a **double confirm** with a red centered popup for dangerous actions (e.g. deleting a running container).
-- 🖱 **Full mouse support** — click to select a container/row, click tabs and group headers, wheel to scroll.
-- ⚡ **Actions** — start, stop, restart, pause/unpause, inspect, delete — with destructive ones gated by the confirmation rules above. (No `exec`/shell by design.)
-- 🎨 **Themes & config** — dark / light / mono, refresh interval, sort order, all saved to a simple YAML file.
+- **Bento-grid dashboard** — containers as cards, grouped per Compose project. Each group header shows aggregate CPU / MEM / NET / PIDs; card width adapts per group so names stay readable; collapse/expand groups (remembered across runs).
+- **Live metrics** — CPU & RAM **sparklines**, memory %, network I/O, host ports, exposed ports, health and uptime. Pick exactly which fields appear on a card.
+- **Top-level tabs** — `Containers · Images · Volumes · Networks · Info`, switchable by keyboard (`tab` / `shift+tab` / `1`–`5`) or mouse click.
+- **Detail view** — full status + CPU/RAM history, image, networks and mounted volumes, plus the container's **logs in a scrollable pane** with follow, search and word-wrap.
+- **Dependency insight** — select any image / volume / network to see exactly **which containers use it**, and a clear **STATUS** column: `safe delete`, `in use (N)` or `locked`.
+- **Tiered, safe deletes** — a single confirm for safe removals, a **block** with the blocking containers when something is in use, and a **double confirm** with a red centered popup for dangerous actions (e.g. deleting a running container).
+- **Full mouse support** — click to select a container/row, click tabs and group headers, wheel to scroll.
+- **Actions** — start, stop, restart, pause/unpause, inspect, delete — with destructive ones gated by the confirmation rules above. (No `exec`/shell by design.)
+- **Themes & config** — dark / light / mono, refresh interval, sort order, all saved to a simple YAML file.
 
 ---
 
-## 🚀 Install
+## Install
 
 **Debian / Ubuntu (.deb)** — grab the latest from [Releases](https://github.com/KewinGit/ekiben/releases):
 ```bash
@@ -59,7 +59,7 @@ make build      # -> ./ekiben  (static binary, copy anywhere)
 
 ---
 
-## ⌨️ Usage
+## Usage
 
 ```bash
 ekiben                      # uses ~/.config/ekiben/config.yml (created on first run)
@@ -83,7 +83,7 @@ ekiben --version
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 `~/.config/ekiben/config.yml` (created with sensible defaults on first run):
 
