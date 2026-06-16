@@ -212,8 +212,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.recomputeLayout()
 		if m.logsReady {
-			m.logsVP.Width = msg.Width
-			m.logsVP.Height = msg.Height - 3
+			m.logsVP.Width = m.focusLogsWidth()
+			m.setLogsContent(filterLines(m.logsRaw, m.logsQuery)) // re-wrap to new width
 		}
 		// Clear the screen so a smaller frame doesn't leave stale rows behind.
 		return m, tea.ClearScreen
@@ -247,10 +247,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.id == m.SelectedID() {
 			m.logsRaw = msg.content
 			if !m.logsReady {
-				m.logsVP = viewport.New(m.width-1, 10)
+				m.logsVP = viewport.New(m.focusLogsWidth(), 10)
 				m.logsVP.MouseWheelEnabled = true
 				m.logsReady = true
 			}
+			m.logsVP.Width = m.focusLogsWidth()
 			m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
 			if m.focusInit {
 				m.logsVP.GotoBottom()
@@ -548,8 +549,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// click on a group header row toggles its collapse
 		for _, gr := range m.groupRects {
 			if gr.y == bodyY {
-				m.collapsed[gr.name] = !m.collapsed[gr.name]
-				m.rebuildOrder()
+				m.toggleGroupCollapsed(gr.name)
 				return m, nil
 			}
 		}
@@ -582,11 +582,18 @@ func (m *Model) selectedGroupName() string {
 }
 
 func (m *Model) toggleCollapse() {
-	name := m.selectedGroupName()
+	m.toggleGroupCollapsed(m.selectedGroupName())
+}
+
+// toggleGroupCollapsed flips a group's collapse state, persists it to the config
+// (so it's remembered next launch), and rebuilds the navigation order.
+func (m *Model) toggleGroupCollapsed(name string) {
 	if name == "" {
 		return
 	}
 	m.collapsed[name] = !m.collapsed[name]
+	m.cfg.GroupCollapsed = cloneBoolMap(m.collapsed)
+	_ = m.cfg.Save(config.Path())
 	m.rebuildOrder()
 }
 

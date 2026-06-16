@@ -280,6 +280,12 @@ func (m *Model) header() string {
 	return tab + "\n" + stats
 }
 
+// hyperlink wraps text in an OSC 8 terminal hyperlink so supporting terminals
+// render it clickable (usually ctrl/cmd+click while mouse reporting is on).
+func hyperlink(url, text string) string {
+	return "\x1b]8;;" + url + "\x1b\\" + text + "\x1b]8;;\x1b\\"
+}
+
 // homeTabNames are the labels of the top-level tabs (shared by render + hit-test).
 var homeTabNames = []string{"Containers", "Images", "Volumes", "Networks", "Info"}
 
@@ -531,7 +537,8 @@ func (m *Model) viewInfo() string {
 	body.WriteString(lbl.Render("version  ") + version.String() + "\n")
 	body.WriteString(lbl.Render("license  ") + "MIT" + "\n")
 	body.WriteString(lbl.Render("author   ") + "Kevin Corso" + "\n")
-	body.WriteString(lbl.Render("github   ") + accent.Render("https://github.com/KewinGit/ekiben") + "\n")
+	ghURL := "https://github.com/KewinGit/ekiben"
+	body.WriteString(lbl.Render("github   ") + hyperlink(ghURL, accent.Underline(true).Render(ghURL)) + "\n")
 	body.WriteString(lbl.Render("config   ") + config.Path() + "\n\n")
 	body.WriteString(lbl.Render("monitoring  ") +
 		fmt.Sprintf("%d containers · %d images · %d volumes · %d networks", total, len(m.images), len(m.volumes), len(m.networks)) + "\n\n")

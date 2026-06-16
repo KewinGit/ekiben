@@ -47,6 +47,24 @@ func (s *SDK) List(ctx context.Context, all bool) ([]Container, error) {
 		}
 		st, health, exit := ParseState(su.State, su.Status)
 		ports := portsFromSummary(su.Ports)
+		var nets []string
+		if su.NetworkSettings != nil {
+			for n := range su.NetworkSettings.Networks {
+				nets = append(nets, n)
+			}
+			sort.Strings(nets)
+		}
+		var mounts []string
+		for _, mp := range su.Mounts {
+			switch {
+			case string(mp.Type) == "volume" && mp.Name != "":
+				mounts = append(mounts, mp.Name)
+			case mp.Source != "":
+				mounts = append(mounts, mp.Source)
+			default:
+				mounts = append(mounts, mp.Destination)
+			}
+		}
 		out = append(out, Container{
 			ID:        su.ID,
 			Name:      name,
@@ -58,6 +76,8 @@ func (s *SDK) List(ctx context.Context, all bool) ([]Container, error) {
 			ExitCode:  exit,
 			Ports:     ports,
 			CreatedAt: time.Unix(su.Created, 0),
+			Networks:  nets,
+			Mounts:    mounts,
 		})
 	}
 	return out, nil

@@ -59,6 +59,8 @@ type Container struct {
 	ExitCode  int
 	Ports     []string // host-facing ports, e.g. []string{":5432"} or {":80", ":443"}
 	CreatedAt time.Time
+	Networks  []string // names of networks the container is attached to
+	Mounts    []string // volume names / bind sources the container uses
 }
 
 // Running reports whether the container is currently executing.
