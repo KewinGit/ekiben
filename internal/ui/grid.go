@@ -390,68 +390,85 @@ func (m *Model) viewHome() string {
 	}
 }
 
-// viewImages renders the images listing panel.
+// containersUsingImage returns names of containers created from the image ref.
+func (m *Model) containersUsingImage(ref string) []string {
+	var out []string
+	for _, c := range m.lastContainers {
+		if c.Image == ref {
+			out = append(out, c.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// viewImages renders a selectable image list + the containers created from it.
 func (m *Model) viewImages() string {
+	t := m.theme
 	w := m.width
 	if w < 1 {
 		w = 80
 	}
-	availH := m.height - lipgloss.Height(m.tabBar()) - 4 // 4 = border top+bottom + some margin
-	if availH < 1 {
-		availH = 1
+	tab := m.tabBar()
+	avail := m.height - lipgloss.Height(tab) - 1
+	if avail < 8 {
+		avail = 8
 	}
+	listH := avail/2 + 1
+	detailH := avail - listH
 
-	var lines []string
-	hdr := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(
-		fmt.Sprintf("%-40s  %8s  %s", "REPOSITORY:TAG", "SIZE", "ID"))
-	lines = append(lines, hdr)
+	if m.imgSel >= len(m.images) {
+		m.imgSel = max(0, len(m.images)-1)
+	}
+	bold := lipgloss.NewStyle().Foreground(t.Header).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(t.Dim)
+	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
 	var totalSize int64
 	for _, img := range m.images {
 		totalSize += img.Size
-		repoTag := img.Repo + ":" + img.Tag
-		shortID := img.ID
-		if len(shortID) > 19 {
-			shortID = shortID[7:19] // strip sha256: + 12 chars
+	}
+	rows := []string{bold.Render(fmt.Sprintf("  %-42s %8s %s", "REPOSITORY:TAG", "SIZE", "ID")) +
+		dim.Render(fmt.Sprintf("   (%d images, %s total)", len(m.images), HumanBytes(uint64(totalSize))))}
+	innerH := listH - 3
+	start, end := windowSlice(len(m.images), m.imgSel, innerH)
+	m.listTop = lipgloss.Height(tab) + 2
+	m.listStart = start
+	m.listVisible = end - start
+	for i := start; i < end; i++ {
+		img := m.images[i]
+		cursor := "  "
+		if i == m.imgSel {
+			cursor = accent.Render("► ")
 		}
-		line := fmt.Sprintf("%-40s  %8s  %s",
-			repoTag,
-			HumanBytes(uint64(img.Size)),
-			shortID,
-		)
-		lines = append(lines, line)
+		id := img.ID
+		if len(id) > 19 {
+			id = id[7:19]
+		}
+		rows = append(rows, cursor+fmt.Sprintf("%-42s %8s %s",
+			ansi.Truncate(img.Repo+":"+img.Tag, 42, "…"), HumanBytes(uint64(img.Size)), id))
 	}
+	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
+		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
 
-	totalLine := lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
-		fmt.Sprintf("TOTAL  %s", HumanBytes(uint64(totalSize))))
+	var det []string
+	if len(m.images) > 0 {
+		img := m.images[m.imgSel]
+		ref := img.Repo + ":" + img.Tag
+		det = append(det, bold.Render("containers from ")+accent.Render(ref))
+		cs := m.containersUsingImage(ref)
+		if len(cs) == 0 {
+			det = append(det, dim.Render("  (none)"))
+		} else {
+			for _, n := range cs {
+				det = append(det, "  "+n)
+			}
+		}
+	}
+	detailPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
+		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
-	truncated := 0
-	// Reserve 1 line for total footer; availH-1 for content
-	maxContent := availH - 1
-	if maxContent < 1 {
-		maxContent = 1
-	}
-	if len(lines) > maxContent {
-		truncated = len(lines) - maxContent
-		lines = lines[:maxContent]
-	}
-	if truncated > 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
-			fmt.Sprintf("… (+%d more)", truncated)))
-	}
-	lines = append(lines, totalLine)
-
-	contentW := w - 4
-	if contentW < 20 {
-		contentW = 20
-	}
-	panel := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.theme.Border).
-		Width(contentW).
-		Render(strings.Join(lines, "\n"))
-
-	return m.tabBar() + "\n" + panel
+	return tab + "\n" + listPanel + "\n" + detailPanel
 }
 
 // viewVolumes renders the volumes listing panel.

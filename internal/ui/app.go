@@ -118,6 +118,7 @@ type Model struct {
 	images   []docker.Image
 	volumes  []docker.Volume
 	networks []docker.Network
+	imgSel   int // selected row in the Images tab
 	netSel   int // selected row in the Networks tab
 	volSel   int // selected row in the Volumes tab
 
@@ -334,29 +335,16 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Networks / Volumes tabs: up/down move the list selection.
-	if m.homeTab == homeNetworks {
+	// Images / Networks / Volumes tabs: up/down move the list selection.
+	if sel, n := m.listSelPtr(); sel != nil {
 		switch k.String() {
 		case "up", "k":
-			if m.netSel > 0 {
-				m.netSel--
+			if *sel > 0 {
+				*sel--
 			}
 		case "down", "j":
-			if m.netSel < len(m.networks)-1 {
-				m.netSel++
-			}
-		}
-		return m, nil
-	}
-	if m.homeTab == homeVolumes {
-		switch k.String() {
-		case "up", "k":
-			if m.volSel > 0 {
-				m.volSel--
-			}
-		case "down", "j":
-			if m.volSel < len(m.volumes)-1 {
-				m.volSel++
+			if *sel < n-1 {
+				*sel++
 			}
 		}
 		return m, nil
@@ -542,6 +530,20 @@ func (m *Model) ensureSelectedVisible() {
 	}
 }
 
+// listSelPtr returns a pointer to the selection index and the item count for the
+// active list-style tab (Images/Networks/Volumes), or (nil, 0) otherwise.
+func (m *Model) listSelPtr() (*int, int) {
+	switch m.homeTab {
+	case homeImages:
+		return &m.imgSel, len(m.images)
+	case homeNetworks:
+		return &m.netSel, len(m.networks)
+	case homeVolumes:
+		return &m.volSel, len(m.volumes)
+	}
+	return nil, 0
+}
+
 // handleMouse handles mouse events (only when in grid view).
 func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// In the detail view, forward wheel events to the logs viewport for scrolling.
@@ -558,15 +560,9 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		switch m.homeTab {
-		case homeNetworks:
-			if m.netSel > 0 {
-				m.netSel--
-			}
-			return m, nil
-		case homeVolumes:
-			if m.volSel > 0 {
-				m.volSel--
+		if sel, _ := m.listSelPtr(); sel != nil {
+			if *sel > 0 {
+				*sel--
 			}
 			return m, nil
 		}
@@ -575,15 +571,9 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.scrollY = 0
 		}
 	case tea.MouseButtonWheelDown:
-		switch m.homeTab {
-		case homeNetworks:
-			if m.netSel < len(m.networks)-1 {
-				m.netSel++
-			}
-			return m, nil
-		case homeVolumes:
-			if m.volSel < len(m.volumes)-1 {
-				m.volSel++
+		if sel, n := m.listSelPtr(); sel != nil {
+			if *sel < n-1 {
+				*sel++
 			}
 			return m, nil
 		}
@@ -604,13 +594,11 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		// Networks / Volumes: click a list row to select it.
-		if m.homeTab == homeNetworks || m.homeTab == homeVolumes {
+		// Images / Networks / Volumes: click a list row to select it.
+		if sel, n := m.listSelPtr(); sel != nil {
 			if row := msg.Y - m.listTop; row >= 0 && row < m.listVisible {
-				if m.homeTab == homeNetworks {
-					m.netSel = m.listStart + row
-				} else {
-					m.volSel = m.listStart + row
+				if i := m.listStart + row; i < n {
+					*sel = i
 				}
 			}
 			return m, nil
