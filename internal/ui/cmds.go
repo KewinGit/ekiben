@@ -102,9 +102,24 @@ func shortID(id string) string {
 	return id
 }
 
-// loadLogsCmd stub (real body in Task 19)
-func (m *Model) loadLogsCmd() tea.Cmd { return nil }
+type logsMsg struct {
+	id      string
+	content string
+}
 
-// view stubs (real bodies in Tasks 19-20)
-func (m *Model) viewLogs() string     { return "logs" }
+func (m *Model) loadLogsCmd() tea.Cmd {
+	client := m.client
+	id := m.SelectedID()
+	return func() tea.Msg {
+		rc, err := client.Logs(context.Background(), id, false, 1000)
+		if err != nil {
+			return errMsg{err}
+		}
+		defer rc.Close()
+		b, _ := readAllDemux(rc)
+		return logsMsg{id: id, content: string(b)}
+	}
+}
+
+// viewSettings stub (real body in Task 20)
 func (m *Model) viewSettings() string { return "settings" }

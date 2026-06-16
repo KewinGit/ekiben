@@ -6,6 +6,7 @@ import (
 	"github.com/KewinGit/ekiben/internal/config"
 	"github.com/KewinGit/ekiben/internal/docker"
 	"github.com/KewinGit/ekiben/internal/model"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -40,6 +41,11 @@ type Model struct {
 	confirm    bool
 	confirmFor string // action name
 	confirmID  string
+
+	// logs view
+	logsVP    viewport.Model
+	logsID    string
+	logsReady bool
 }
 
 func New(client docker.Client, cfg config.Config) *Model {
@@ -132,6 +138,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case eventMsg:
 		return m, tea.Batch(m.refreshCmd(), m.listenEvents())
+	case logsMsg:
+		m.handleLogsMsg(msg)
+		return m, nil
 	}
 	return m, nil
 }
@@ -146,6 +155,13 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focusInspect = false
 			return m, nil
 		}
+	}
+	if m.mode == viewLogs {
+		if k.String() == "esc" {
+			m.mode = viewGrid
+			return m, nil
+		}
+		return m, m.updateLogs(k)
 	}
 	switch k.String() {
 	case "q", "ctrl+c":
