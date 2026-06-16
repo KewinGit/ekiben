@@ -662,8 +662,9 @@ func (m *Model) viewInfo() string {
 
 	var body strings.Builder
 	body.WriteString(banner + "\n\n")
-	body.WriteString(dim.Render("A terminal UI to monitor and manage Docker containers,") + "\n")
-	body.WriteString(dim.Render("shown as cards grouped by Compose project.") + "\n\n")
+	body.WriteString(lipgloss.NewStyle().Foreground(t.Accent).Render("駅弁") +
+		dim.Render("  ekiben — a railway-station bento for your Docker:") + "\n")
+	body.WriteString(dim.Render("every compose project a compartment, each container a tasty morsel.") + "\n\n")
 	body.WriteString(lbl.Render("version  ") + version.String() + "\n")
 	body.WriteString(lbl.Render("license  ") + "MIT" + "\n")
 	body.WriteString(lbl.Render("author   ") + "Kevin Corso" + "\n")
