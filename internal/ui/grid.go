@@ -437,7 +437,7 @@ func (m *Model) viewImages() string {
 	for _, img := range m.images {
 		totalSize += img.Size
 	}
-	rows := []string{bold.Render(fmt.Sprintf("  %-12s %-40s %8s %s", "STATUS", "REPOSITORY:TAG", "SIZE", "ID")) +
+	rows := []string{bold.Render(fmt.Sprintf("  %-40s %8s %-14s %s", "REPOSITORY:TAG", "SIZE", "ID", "STATUS")) +
 		dim.Render(fmt.Sprintf("   (%d, %s)", len(m.images), HumanBytes(uint64(totalSize))))}
 	innerH := listH - 3
 	start, end := windowSlice(len(m.images), m.imgSel, innerH)
@@ -455,8 +455,8 @@ func (m *Model) viewImages() string {
 			id = id[7:19]
 		}
 		deps := len(m.containersUsingImage(img.Repo + ":" + img.Tag))
-		rows = append(rows, cursor+deleteStatusCol(deps, false, t)+" "+fmt.Sprintf("%-40s %8s %s",
-			ansi.Truncate(img.Repo+":"+img.Tag, 40, "…"), HumanBytes(uint64(img.Size)), id))
+		rows = append(rows, cursor+fmt.Sprintf("%-40s %8s %-14s ",
+			ansi.Truncate(img.Repo+":"+img.Tag, 40, "…"), HumanBytes(uint64(img.Size)), id)+deleteStatusCol(deps, false, t))
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
@@ -509,7 +509,7 @@ func (m *Model) viewVolumes() string {
 	for _, v := range m.volumes {
 		totalSize += v.Size
 	}
-	rows := []string{bold.Render(fmt.Sprintf("  %-12s %-30s %-8s %8s", "STATUS", "NAME", "DRIVER", "SIZE")) +
+	rows := []string{bold.Render(fmt.Sprintf("  %-30s %-8s %8s  %s", "NAME", "DRIVER", "SIZE", "STATUS")) +
 		dim.Render(fmt.Sprintf("   (%d, %s)", len(m.volumes), HumanBytes(uint64(totalSize))))}
 	innerH := listH - 3
 	start, end := windowSlice(len(m.volumes), m.volSel, innerH)
@@ -523,8 +523,8 @@ func (m *Model) viewVolumes() string {
 			cursor = accent.Render("► ")
 		}
 		deps := len(m.containersUsingVolume(v.Name))
-		rows = append(rows, cursor+deleteStatusCol(deps, false, t)+" "+fmt.Sprintf("%-30s %-8s %8s",
-			ansi.Truncate(v.Name, 30, "…"), ansi.Truncate(v.Driver, 8, "…"), HumanBytes(uint64(v.Size))))
+		rows = append(rows, cursor+fmt.Sprintf("%-30s %-8s %8s  ",
+			ansi.Truncate(v.Name, 30, "…"), ansi.Truncate(v.Driver, 8, "…"), HumanBytes(uint64(v.Size)))+deleteStatusCol(deps, false, t))
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
@@ -573,7 +573,7 @@ func (m *Model) viewNetworks() string {
 	dim := lipgloss.NewStyle().Foreground(t.Dim)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
-	rows := []string{bold.Render(fmt.Sprintf("  %-12s %-24s %-9s %-6s %s", "STATUS", "NAME", "DRIVER", "SCOPE", "ID")) +
+	rows := []string{bold.Render(fmt.Sprintf("  %-24s %-9s %-6s %-14s %s", "NAME", "DRIVER", "SCOPE", "ID", "STATUS")) +
 		dim.Render(fmt.Sprintf("   (%d)", len(m.networks)))}
 	innerH := listH - 3
 	start, end := windowSlice(len(m.networks), m.netSel, innerH)
@@ -592,8 +592,8 @@ func (m *Model) viewNetworks() string {
 		}
 		locked := net.Name == "bridge" || net.Name == "host" || net.Name == "none"
 		deps := len(m.containersInNetwork(net.Name))
-		rows = append(rows, cursor+deleteStatusCol(deps, locked, t)+" "+fmt.Sprintf("%-24s %-9s %-6s %s",
-			ansi.Truncate(net.Name, 24, "…"), ansi.Truncate(net.Driver, 9, "…"), ansi.Truncate(net.Scope, 6, "…"), id))
+		rows = append(rows, cursor+fmt.Sprintf("%-24s %-9s %-6s %-14s ",
+			ansi.Truncate(net.Name, 24, "…"), ansi.Truncate(net.Driver, 9, "…"), ansi.Truncate(net.Scope, 6, "…"), id)+deleteStatusCol(deps, locked, t))
 	}
 	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
 		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
