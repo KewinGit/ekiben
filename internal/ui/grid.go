@@ -485,6 +485,9 @@ func (m *Model) viewVolumes() string {
 		dim.Render(fmt.Sprintf("   (%d volumes, %s total)", len(m.volumes), HumanBytes(uint64(totalSize))))}
 	innerH := listH - 3
 	start, end := windowSlice(len(m.volumes), m.volSel, innerH)
+	m.listTop = lipgloss.Height(tab) + 2 // tab + panel top border + header row
+	m.listStart = start
+	m.listVisible = end - start
 	for i := start; i < end; i++ {
 		v := m.volumes[i]
 		cursor := "  "
@@ -544,6 +547,9 @@ func (m *Model) viewNetworks() string {
 		dim.Render(fmt.Sprintf("   (%d networks)", len(m.networks)))}
 	innerH := listH - 3
 	start, end := windowSlice(len(m.networks), m.netSel, innerH)
+	m.listTop = lipgloss.Height(tab) + 2 // tab + panel top border + header row
+	m.listStart = start
+	m.listVisible = end - start
 	for i := start; i < end; i++ {
 		net := m.networks[i]
 		cursor := "  "

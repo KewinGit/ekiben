@@ -121,6 +121,11 @@ type Model struct {
 	netSel   int // selected row in the Networks tab
 	volSel   int // selected row in the Volumes tab
 
+	// hit-testing for the Networks/Volumes list (set during render)
+	listTop     int // screen Y of the first data row
+	listStart   int // index of the first visible data row
+	listVisible int // number of visible data rows
+
 	lastErr error
 	cfgPath string // where to persist config; empty disables saving (tests)
 }
@@ -553,11 +558,35 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
+		switch m.homeTab {
+		case homeNetworks:
+			if m.netSel > 0 {
+				m.netSel--
+			}
+			return m, nil
+		case homeVolumes:
+			if m.volSel > 0 {
+				m.volSel--
+			}
+			return m, nil
+		}
 		m.scrollY -= 3
 		if m.scrollY < 0 {
 			m.scrollY = 0
 		}
 	case tea.MouseButtonWheelDown:
+		switch m.homeTab {
+		case homeNetworks:
+			if m.netSel < len(m.networks)-1 {
+				m.netSel++
+			}
+			return m, nil
+		case homeVolumes:
+			if m.volSel < len(m.volumes)-1 {
+				m.volSel++
+			}
+			return m, nil
+		}
 		maxScroll := max(0, m.gridBodyH-m.gridAvailH)
 		m.scrollY += 3
 		if m.scrollY > maxScroll {
@@ -572,6 +601,17 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if t, ok := tabAt(msg.X); ok {
 				m.homeTab = t
 				return m, m.homeTabSwitchCmd()
+			}
+			return m, nil
+		}
+		// Networks / Volumes: click a list row to select it.
+		if m.homeTab == homeNetworks || m.homeTab == homeVolumes {
+			if row := msg.Y - m.listTop; row >= 0 && row < m.listVisible {
+				if m.homeTab == homeNetworks {
+					m.netSel = m.listStart + row
+				} else {
+					m.volSel = m.listStart + row
+				}
 			}
 			return m, nil
 		}
