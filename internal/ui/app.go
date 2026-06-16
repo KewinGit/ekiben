@@ -60,7 +60,9 @@ func cloneBoolMap(in map[string]bool) map[string]bool {
 	return out
 }
 
-func (m *Model) Init() tea.Cmd { return nil }
+func (m *Model) Init() tea.Cmd {
+	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.listenEvents())
+}
 
 // applyContainers rebuilds groups + the flattened navigation order.
 func (m *Model) applyContainers(cs []docker.Container) {
@@ -128,7 +130,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyContainers(msg)
 		return m, nil
 	case eventMsg:
-		return m, m.refreshCmd()
+		return m, tea.Batch(m.refreshCmd(), m.listenEvents())
 	}
 	return m, nil
 }
