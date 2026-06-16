@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 )
@@ -212,9 +213,28 @@ func (s *SDK) Images(ctx context.Context) ([]Image, error) {
 }
 
 func (s *SDK) Volumes(ctx context.Context) ([]Volume, error) {
-	resp, err := s.cli.VolumeList(ctx, volume.ListOptions{})
-	if err != nil {
-		return nil, err
+	// Try DiskUsage first so we get UsageData.Size per volume.
+	du, err := s.cli.DiskUsage(ctx, types.DiskUsageOptions{})
+	if err == nil && len(du.Volumes) > 0 {
+		out := make([]Volume, 0, len(du.Volumes))
+		for _, v := range du.Volumes {
+			var sz int64
+			if v.UsageData != nil {
+				sz = v.UsageData.Size
+			}
+			out = append(out, Volume{
+				Name:       v.Name,
+				Driver:     v.Driver,
+				Mountpoint: v.Mountpoint,
+				Size:       sz,
+			})
+		}
+		return out, nil
+	}
+	// Fallback: VolumeList with Size 0.
+	resp, err2 := s.cli.VolumeList(ctx, volume.ListOptions{})
+	if err2 != nil {
+		return nil, err2
 	}
 	out := make([]Volume, 0, len(resp.Volumes))
 	for _, v := range resp.Volumes {
@@ -222,6 +242,27 @@ func (s *SDK) Volumes(ctx context.Context) ([]Volume, error) {
 			Name:       v.Name,
 			Driver:     v.Driver,
 			Mountpoint: v.Mountpoint,
+		})
+	}
+	return out, nil
+}
+
+func (s *SDK) Networks(ctx context.Context) ([]Network, error) {
+	nets, err := s.cli.NetworkList(ctx, network.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Network, 0, len(nets))
+	for _, n := range nets {
+		id := n.ID
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		out = append(out, Network{
+			ID:     id,
+			Name:   n.Name,
+			Driver: n.Driver,
+			Scope:  n.Scope,
 		})
 	}
 	return out, nil

@@ -16,6 +16,15 @@ type Volume struct {
 	Name       string
 	Driver     string
 	Mountpoint string
+	Size       int64
+}
+
+// Network is the projection of a Docker network that ekiben needs.
+type Network struct {
+	ID     string
+	Name   string
+	Driver string
+	Scope  string
 }
 
 type Status string

@@ -168,6 +168,9 @@ type imagesMsg []docker.Image
 // volumesMsg carries the result of listing volumes.
 type volumesMsg []docker.Volume
 
+// networksMsg carries the result of listing networks.
+type networksMsg []docker.Network
+
 // loadImagesCmd fetches the images list.
 func (m *Model) loadImagesCmd() tea.Cmd {
 	client := m.client
@@ -189,5 +192,17 @@ func (m *Model) loadVolumesCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return volumesMsg(vols)
+	}
+}
+
+// loadNetworksCmd fetches the networks list.
+func (m *Model) loadNetworksCmd() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		nets, err := client.Networks(context.Background())
+		if err != nil {
+			return errMsg{err}
+		}
+		return networksMsg(nets)
 	}
 }

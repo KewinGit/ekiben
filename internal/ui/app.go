@@ -54,10 +54,11 @@ const (
 	homeContainers homeTab = iota
 	homeImages
 	homeVolumes
+	homeNetworks
 	homeInfo
 )
 
-const homeTabCount = 4
+const homeTabCount = 5
 
 type Model struct {
 	client  docker.Client
@@ -112,9 +113,10 @@ type Model struct {
 	lastContainers []docker.Container
 
 	// home tab state
-	homeTab homeTab
-	images  []docker.Image
-	volumes []docker.Volume
+	homeTab  homeTab
+	images   []docker.Image
+	volumes  []docker.Volume
+	networks []docker.Network
 
 	lastErr error
 }
@@ -140,7 +142,7 @@ func cloneBoolMap(in map[string]bool) map[string]bool {
 
 func (m *Model) Init() tea.Cmd {
 	m.eventCh, _ = m.client.Events(context.Background())
-	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent(), m.loadImagesCmd(), m.loadVolumesCmd())
+	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
 }
 
 // applyContainers rebuilds groups + the flattened navigation order.
@@ -228,6 +230,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case volumesMsg:
 		m.volumes = []docker.Volume(msg)
+		return m, nil
+	case networksMsg:
+		m.networks = []docker.Network(msg)
 		return m, nil
 	case eventMsg:
 		return m, tea.Batch(m.refreshCmd(), m.waitForEvent())
@@ -340,6 +345,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.homeTab = homeVolumes
 		return m, m.homeTabSwitchCmd()
 	case "4":
+		m.homeTab = homeNetworks
+		return m, m.homeTabSwitchCmd()
+	case "5":
 		m.homeTab = homeInfo
 		return m, m.homeTabSwitchCmd()
 	case "c":
@@ -395,13 +403,15 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// homeTabSwitchCmd returns a load cmd when switching to Images or Volumes tabs.
+// homeTabSwitchCmd returns a load cmd when switching to Images, Volumes, or Networks tabs.
 func (m *Model) homeTabSwitchCmd() tea.Cmd {
 	switch m.homeTab {
 	case homeImages:
 		return m.loadImagesCmd()
 	case homeVolumes:
 		return m.loadVolumesCmd()
+	case homeNetworks:
+		return m.loadNetworksCmd()
 	}
 	return nil
 }

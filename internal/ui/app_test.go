@@ -61,12 +61,16 @@ func TestHomeTabCycles(t *testing.T) {
 		t.Fatalf("after 2 tabs: homeTab = %d, want homeVolumes(%d)", m.homeTab, homeVolumes)
 	}
 	m.Update(tabKey)
+	if m.homeTab != homeNetworks {
+		t.Fatalf("after 3 tabs: homeTab = %d, want homeNetworks(%d)", m.homeTab, homeNetworks)
+	}
+	m.Update(tabKey)
 	if m.homeTab != homeInfo {
-		t.Fatalf("after 3 tabs: homeTab = %d, want homeInfo(%d)", m.homeTab, homeInfo)
+		t.Fatalf("after 4 tabs: homeTab = %d, want homeInfo(%d)", m.homeTab, homeInfo)
 	}
 	m.Update(tabKey)
 	if m.homeTab != homeContainers {
-		t.Fatalf("after 4 tabs (wrap): homeTab = %d, want homeContainers(%d)", m.homeTab, homeContainers)
+		t.Fatalf("after 5 tabs (wrap): homeTab = %d, want homeContainers(%d)", m.homeTab, homeContainers)
 	}
 }
 
@@ -89,7 +93,12 @@ func TestHomeTabDirectKeys(t *testing.T) {
 	}
 	rune4 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}}
 	m.Update(rune4)
+	if m.homeTab != homeNetworks {
+		t.Fatalf("key '4': homeTab = %d, want homeNetworks(%d)", m.homeTab, homeNetworks)
+	}
+	rune5 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}}
+	m.Update(rune5)
 	if m.homeTab != homeInfo {
-		t.Fatalf("key '4': homeTab = %d, want homeInfo(%d)", m.homeTab, homeInfo)
+		t.Fatalf("key '5': homeTab = %d, want homeInfo(%d)", m.homeTab, homeInfo)
 	}
 }

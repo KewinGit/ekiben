@@ -275,7 +275,7 @@ func (m *Model) header() string {
 }
 
 // homeTabNames are the labels of the top-level tabs (shared by render + hit-test).
-var homeTabNames = []string{"Containers", "Images", "Volumes", "Info"}
+var homeTabNames = []string{"Containers", "Images", "Volumes", "Networks", "Info"}
 
 const tabBarLeading = 1 // leading space before the first tab label
 const tabBarSep = 3     // width of the " │ " separator between labels
@@ -320,6 +320,8 @@ func (m *Model) viewHome() string {
 		return m.viewImages()
 	case homeVolumes:
 		return m.viewVolumes()
+	case homeNetworks:
+		return m.viewNetworks()
 	case homeInfo:
 		return m.viewInfo()
 	default:
@@ -343,7 +345,9 @@ func (m *Model) viewImages() string {
 		fmt.Sprintf("%-40s  %8s  %s", "REPOSITORY:TAG", "SIZE", "ID"))
 	lines = append(lines, hdr)
 
+	var totalSize int64
 	for _, img := range m.images {
+		totalSize += img.Size
 		repoTag := img.Repo + ":" + img.Tag
 		shortID := img.ID
 		if len(shortID) > 19 {
@@ -357,15 +361,24 @@ func (m *Model) viewImages() string {
 		lines = append(lines, line)
 	}
 
+	totalLine := lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
+		fmt.Sprintf("TOTAL  %s", HumanBytes(uint64(totalSize))))
+
 	truncated := 0
-	if len(lines) > availH {
-		truncated = len(lines) - availH
-		lines = lines[:availH]
+	// Reserve 1 line for total footer; availH-1 for content
+	maxContent := availH - 1
+	if maxContent < 1 {
+		maxContent = 1
+	}
+	if len(lines) > maxContent {
+		truncated = len(lines) - maxContent
+		lines = lines[:maxContent]
 	}
 	if truncated > 0 {
 		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
 			fmt.Sprintf("… (+%d more)", truncated)))
 	}
+	lines = append(lines, totalLine)
 
 	contentW := w - 4
 	if contentW < 20 {
@@ -393,16 +406,78 @@ func (m *Model) viewVolumes() string {
 
 	var lines []string
 	hdr := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(
-		fmt.Sprintf("%-30s  %-10s  %s", "NAME", "DRIVER", "MOUNTPOINT"))
+		fmt.Sprintf("%-30s  %-10s  %8s  %s", "NAME", "DRIVER", "SIZE", "MOUNTPOINT"))
 	lines = append(lines, hdr)
 
-	mountW := w - 46 // leave room for name+driver columns + borders
+	mountW := w - 58 // leave room for name+driver+size columns + borders
 	if mountW < 20 {
 		mountW = 20
 	}
+	var totalSize int64
 	for _, vol := range m.volumes {
+		totalSize += vol.Size
 		mp := ansi.Truncate(vol.Mountpoint, mountW, "…")
-		line := fmt.Sprintf("%-30s  %-10s  %s", vol.Name, vol.Driver, mp)
+		line := fmt.Sprintf("%-30s  %-10s  %8s  %s",
+			vol.Name, vol.Driver, HumanBytes(uint64(vol.Size)), mp)
+		lines = append(lines, line)
+	}
+
+	totalLine := lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
+		fmt.Sprintf("TOTAL  %s", HumanBytes(uint64(totalSize))))
+
+	truncated := 0
+	maxContent := availH - 1
+	if maxContent < 1 {
+		maxContent = 1
+	}
+	if len(lines) > maxContent {
+		truncated = len(lines) - maxContent
+		lines = lines[:maxContent]
+	}
+	if truncated > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
+			fmt.Sprintf("… (+%d more)", truncated)))
+	}
+	lines = append(lines, totalLine)
+
+	contentW := w - 4
+	if contentW < 20 {
+		contentW = 20
+	}
+	panel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.Border).
+		Width(contentW).
+		Render(strings.Join(lines, "\n"))
+
+	return m.tabBar() + "\n" + panel
+}
+
+// viewNetworks renders the networks listing panel.
+func (m *Model) viewNetworks() string {
+	w := m.width
+	if w < 1 {
+		w = 80
+	}
+	availH := m.height - lipgloss.Height(m.tabBar()) - 4
+	if availH < 1 {
+		availH = 1
+	}
+
+	var lines []string
+	hdr := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(
+		fmt.Sprintf("%-30s  %-10s  %-10s  %s", "NAME", "DRIVER", "SCOPE", "ID"))
+	lines = append(lines, hdr)
+
+	for _, net := range m.networks {
+		name := ansi.Truncate(net.Name, 30, "…")
+		driver := ansi.Truncate(net.Driver, 10, "…")
+		scope := ansi.Truncate(net.Scope, 10, "…")
+		id := net.ID
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		line := fmt.Sprintf("%-30s  %-10s  %-10s  %s", name, driver, scope, id)
 		lines = append(lines, line)
 	}
 
@@ -453,8 +528,8 @@ func (m *Model) viewInfo() string {
 	body.WriteString(lbl.Render("github   ") + accent.Render("https://github.com/KewinGit/ekiben") + "\n")
 	body.WriteString(lbl.Render("config   ") + config.Path() + "\n\n")
 	body.WriteString(lbl.Render("monitoring  ") +
-		fmt.Sprintf("%d containers · %d images · %d volumes", total, len(m.images), len(m.volumes)) + "\n\n")
-	body.WriteString(dim.Render("keys  tab / 1-4  switch tab     c  settings     q  quit") + "\n")
+		fmt.Sprintf("%d containers · %d images · %d volumes · %d networks", total, len(m.images), len(m.volumes), len(m.networks)) + "\n\n")
+	body.WriteString(dim.Render("keys  tab / 1-5  switch tab     c  settings     q  quit") + "\n")
 	body.WriteString(dim.Render("      ↑↓←→ navigate · click select · wheel scroll") + "\n")
 	body.WriteString(dim.Render("      enter focus · l logs · s/r/p/a/u/d actions · space collapse"))
 
