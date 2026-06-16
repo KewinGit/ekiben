@@ -52,3 +52,6 @@ func GroupContainers(cs []docker.Container, order []string) []Group {
 	add(StandaloneGroup)
 	return out
 }
+
+func (g Group) GroupName() string                 { return g.Name }
+func (g Group) GetContainers() []docker.Container { return g.Containers }
