@@ -127,6 +127,21 @@ func (m *Model) viewGrid() string {
 	// footer
 	footer := m.actionBar()
 
+	// streaming compose output pane (shown while a compose action runs)
+	composePane, composePaneH := "", 0
+	if m.composeRunning {
+		const ph = 12 // total pane height incl. border
+		body := m.composeLines
+		if len(body) > ph-3 {
+			body = body[len(body)-(ph-3):]
+		}
+		head := lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true).Render(m.composeTitle + " …")
+		composePane = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.theme.Accent).Width(m.width - 2).Height(ph - 2).
+			Render(head + "\n" + lipgloss.NewStyle().Foreground(m.theme.Dim).Render(strings.Join(body, "\n")))
+		composePaneH = lipgloss.Height(composePane) + 1 // +1 separator
+	}
+
 	// --- guard: no dimensions yet ---
 	if m.height <= 0 || m.width <= 0 {
 		var b strings.Builder
@@ -151,7 +166,7 @@ func (m *Model) viewGrid() string {
 	}
 	// Screen layout: header(headerH) + errBanner(errH) + panel[ top(1) + content(availH) + bottom(1) ]
 	//                + separator(1) + footer(footerH)
-	availH := m.height - headerH - errH - footerH - 3
+	availH := m.height - headerH - errH - footerH - 3 - composePaneH
 	if availH < 1 {
 		availH = 1
 	}
@@ -198,6 +213,9 @@ func (m *Model) viewGrid() string {
 		b.WriteString(l + "\n")
 	}
 	b.WriteString(panel)
+	if composePane != "" {
+		b.WriteString("\n" + composePane)
+	}
 	b.WriteString("\n" + footer)
 	return b.String()
 }

@@ -147,6 +147,13 @@ type Model struct {
 	listStart   int // index of the first visible data row
 	listVisible int // number of visible data rows
 
+	// streaming compose output pane (Containers tab)
+	composeRunning   bool
+	composeTitle     string
+	composeLines     []string
+	composeCh        chan composeEvent
+	composePendingUp *composeRef // restart: run `up` after `down` completes
+
 	lastErr error
 	cfgPath string // where to persist config; empty disables saving (tests)
 }
@@ -275,11 +282,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// reload everything: an action may have changed containers/images/volumes/networks
 		return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
 	case execDoneMsg:
-		// exec/compose released the terminal: re-enable mouse reporting and reload.
-		return m, tea.Batch(tea.EnableMouseCellMotion,
+		// exec released the terminal: re-enable mouse, force a clean repaint, reload.
+		return m, tea.Batch(tea.EnableMouseCellMotion, tea.ClearScreen,
 			m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
-	case composeUpAfterDownMsg:
-		return m, m.composeUpCmd(composeRef(msg))
+	case composeEvent:
+		if msg.done {
+			m.composeRunning = false
+			m.composeCh = nil
+			if msg.err != nil {
+				m.lastErr = msg.err
+			}
+			// restart: chain `up` after a successful `down`
+			if m.composePendingUp != nil {
+				g := *m.composePendingUp
+				m.composePendingUp = nil
+				return m, m.startComposeCmd("compose up: "+g.project, composeArgs(g, "up", "-d"))
+			}
+			return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
+		}
+		m.composeLines = append(m.composeLines, msg.line)
+		if len(m.composeLines) > 500 {
+			m.composeLines = m.composeLines[len(m.composeLines)-500:]
+		}
+		return m, readComposeCmd(m.composeCh)
 	case focusLogsMsg:
 		if msg.id == m.SelectedID() {
 			m.logsRaw = msg.content
@@ -418,7 +443,7 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "S":
 		if g, ok := m.selectedComposeRef(); ok {
-			return m, m.composeUpCmd(g)
+			return m, m.runCompose(g, "up")
 		}
 	case "X":
 		return m, m.requestCompose("down")
@@ -440,6 +465,21 @@ func (m *Model) selectedComposeRef() (composeRef, bool) {
 	return composeRef{project: c.Project, workdir: c.ComposeWorkdir, files: c.ComposeFiles}, true
 }
 
+// runCompose starts a streamed `docker compose` action for a project.
+func (m *Model) runCompose(g composeRef, action string) tea.Cmd {
+	switch action {
+	case "up":
+		return m.startComposeCmd("compose up: "+g.project, composeArgs(g, "up", "-d"))
+	case "down":
+		return m.startComposeCmd("compose down: "+g.project, composeArgs(g, "down"))
+	case "restart":
+		gg := g
+		m.composePendingUp = &gg
+		return m.startComposeCmd("compose down: "+g.project, composeArgs(g, "down"))
+	}
+	return nil
+}
+
 // requestCompose runs a compose action (down / restart) on the selected project,
 // gated by a danger confirm when confirm_destructive is on.
 func (m *Model) requestCompose(action string) tea.Cmd {
@@ -447,19 +487,14 @@ func (m *Model) requestCompose(action string) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	act := func() tea.Cmd {
-		if action == "restart" {
-			return m.composeRestartCmd(g)
-		}
-		return m.composeDownCmd(g)
-	}
 	if !m.cfg.ConfirmDestructive {
-		return act()
+		return m.runCompose(g, action)
 	}
 	msg := g.project
 	if action == "restart" {
 		msg = g.project + "  (down + up)"
 	}
+	act := func() tea.Cmd { return m.runCompose(g, action) }
 	m.modal = modalState{kind: modalConfirm, title: "compose " + action, msg: msg, danger: true, steps: 1, action: act}
 	return nil
 }

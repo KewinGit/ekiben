@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bufio"
 	"context"
+	"io"
 	"os/exec"
 	"time"
 
@@ -16,11 +18,15 @@ type composeRef struct {
 	files   []string
 }
 
-// execDoneMsg is returned after an interactive exec/compose process exits.
+// execDoneMsg is returned after an interactive exec process exits.
 type execDoneMsg struct{ err error }
 
-// composeUpAfterDownMsg chains `up` after a `down` for the restart action.
-type composeUpAfterDownMsg composeRef
+// composeEvent is one line of streamed compose output, or the final done marker.
+type composeEvent struct {
+	line string
+	done bool
+	err  error
+}
 
 // execShellCmd suspends the TUI and opens a shell inside the container (bash if
 // available, else sh), via the docker CLI.
@@ -41,20 +47,39 @@ func composeArgs(g composeRef, sub ...string) []string {
 	return append(args, sub...)
 }
 
-func (m *Model) composeUpCmd(g composeRef) tea.Cmd {
-	return tea.ExecProcess(exec.Command("docker", composeArgs(g, "up", "-d")...),
-		func(err error) tea.Msg { return execDoneMsg{err} })
+// startComposeCmd runs `docker compose ...` and streams its output into an
+// in-app pane (composeEvent messages) instead of taking over the terminal.
+func (m *Model) startComposeCmd(title string, args []string) tea.Cmd {
+	ch := make(chan composeEvent, 256)
+	m.composeCh = ch
+	m.composeRunning = true
+	m.composeTitle = title
+	m.composeLines = nil
+
+	cmd := exec.Command("docker", args...)
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+	scanDone := make(chan struct{})
+	go func() {
+		sc := bufio.NewScanner(pr)
+		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for sc.Scan() {
+			ch <- composeEvent{line: sc.Text()}
+		}
+		close(scanDone)
+	}()
+	go func() {
+		err := cmd.Run()
+		pw.Close()
+		<-scanDone
+		ch <- composeEvent{done: true, err: err}
+	}()
+	return readComposeCmd(ch)
 }
 
-func (m *Model) composeDownCmd(g composeRef) tea.Cmd {
-	return tea.ExecProcess(exec.Command("docker", composeArgs(g, "down")...),
-		func(err error) tea.Msg { return execDoneMsg{err} })
-}
-
-// composeRestartCmd runs `down` then chains `up -d` via composeUpAfterDownMsg.
-func (m *Model) composeRestartCmd(g composeRef) tea.Cmd {
-	return tea.ExecProcess(exec.Command("docker", composeArgs(g, "down")...),
-		func(err error) tea.Msg { return composeUpAfterDownMsg(g) })
+func readComposeCmd(ch chan composeEvent) tea.Cmd {
+	return func() tea.Msg { return <-ch }
 }
 
 // refreshCmd lists containers once.
