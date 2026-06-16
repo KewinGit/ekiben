@@ -43,9 +43,13 @@ type Model struct {
 	confirmID  string
 
 	// logs view
-	logsVP    viewport.Model
-	logsID    string
-	logsReady bool
+	logsVP       viewport.Model
+	logsID       string
+	logsReady    bool
+	logsRaw      string // full unfiltered content
+	logsQuery    string // current search query
+	logsSearching bool  // true while typing a query
+	logsFollow   bool  // true when follow mode is active
 }
 
 func New(client docker.Client, cfg config.Config) *Model {
@@ -141,6 +145,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logsMsg:
 		m.handleLogsMsg(msg)
 		return m, nil
+	case logsTickMsg:
+		if m.logsFollow && m.mode == viewLogs {
+			return m, tea.Batch(m.loadLogsCmd(), m.logsTickCmd())
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -157,8 +166,38 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.mode == viewLogs {
-		if k.String() == "esc" {
+		if m.logsSearching {
+			switch k.Type {
+			case tea.KeyEsc, tea.KeyEnter:
+				m.logsSearching = false
+			case tea.KeyBackspace, tea.KeyDelete:
+				if len(m.logsQuery) > 0 {
+					runes := []rune(m.logsQuery)
+					m.logsQuery = string(runes[:len(runes)-1])
+				}
+			case tea.KeyRunes:
+				m.logsQuery += k.String()
+			}
+			m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+			return m, nil
+		}
+		switch k.String() {
+		case "esc":
 			m.mode = viewGrid
+			m.logsFollow = false
+			m.logsSearching = false
+			m.logsQuery = ""
+			return m, nil
+		case "/":
+			m.logsSearching = true
+			m.logsQuery = ""
+			m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+			return m, nil
+		case "f":
+			m.logsFollow = !m.logsFollow
+			if m.logsFollow {
+				return m, tea.Batch(m.loadLogsCmd(), m.logsTickCmd())
+			}
 			return m, nil
 		}
 		return m, m.updateLogs(k)
