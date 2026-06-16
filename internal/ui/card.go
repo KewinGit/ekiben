@@ -40,6 +40,13 @@ type CardInput struct {
 	Width     int
 	Selected  bool
 	Theme     Theme
+
+	// optional enrichment (shown only when the field is enabled)
+	Restarts      int
+	RestartsKnown bool
+	LogErrs       int
+	LogWarns      int
+	LogKnown      bool
 }
 
 // RenderCard returns a bordered, fixed-width card for one container.
@@ -87,9 +94,38 @@ func RenderCard(in CardInput) string {
 			}
 			lines = append(lines, lbl.Render("exp")+" "+lipgloss.NewStyle().Foreground(t.Dim).Render(exp))
 		case "image":
-			lines = append(lines, fmt.Sprintf("%s %s", lbl.Render("img"), in.Container.Image))
+			head := lbl.Render("img") + " "
+			avail := innerW - 4 // "img " prefix
+			if avail < 1 {
+				avail = 1
+			}
+			name := in.Container.Image
+			first, rest := name, ""
+			if len(name) > avail {
+				first, rest = name[:avail], name[avail:]
+			}
+			lines = append(lines, head+first)
+			// continuation line, indented under the value (not under "img")
+			lines = append(lines, "    "+ansi.Truncate(rest, avail, "…"))
 		case "pids":
 			lines = append(lines, fmt.Sprintf("%s %d", lbl.Render("pids"), in.Stats.PIDs))
+		case "restarts":
+			v := "—"
+			if in.RestartsKnown {
+				v = fmt.Sprintf("%d", in.Restarts)
+				if in.Restarts >= 5 {
+					v += lipgloss.NewStyle().Foreground(t.Problem).Render(" ⟳")
+				}
+			}
+			lines = append(lines, lbl.Render("restr")+" "+v)
+		case "errors":
+			v := lipgloss.NewStyle().Foreground(t.Dim).Render("—")
+			if in.LogKnown {
+				v = fmt.Sprintf("%s %s",
+					lipgloss.NewStyle().Foreground(t.Problem).Render(fmt.Sprintf("%d err", in.LogErrs)),
+					lipgloss.NewStyle().Foreground(t.Warn).Render(fmt.Sprintf("%d warn", in.LogWarns)))
+			}
+			lines = append(lines, lbl.Render("log")+" "+v)
 		case "uptime":
 			// shown on the status line; render standalone only if status is hidden
 			if !contains(in.Fields, "status") {
@@ -128,12 +164,8 @@ func RenderCard(in CardInput) string {
 }
 
 func cardTitle(in CardInput, t Theme) string {
-	dot := dotFor(in.Container, t)
-	marker := ""
-	if in.Selected {
-		marker = lipgloss.NewStyle().Foreground(t.Selected).Render(" ►")
-	}
-	return fmt.Sprintf("%s %s%s", dot, in.Container.Name, marker)
+	// The double border already marks the selection — no extra arrow needed.
+	return fmt.Sprintf("%s %s", dotFor(in.Container, t), in.Container.Name)
 }
 
 // statusLine renders the status line. When uptime != "" it is inserted between

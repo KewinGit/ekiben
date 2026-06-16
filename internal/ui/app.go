@@ -99,6 +99,7 @@ type Model struct {
 	width     int
 	height    int
 	mode      viewMode
+	tableView bool // Containers tab: table layout instead of cards
 
 	// scrollable grid state
 	scrollY      int         // vertical scroll offset in body lines
@@ -128,10 +129,12 @@ type Model struct {
 	logsTotalLines int    // wrapped line count of current logs content
 
 	// settings view
-	settingsTab    settingsTab
-	settingsSel    int
-	settingsGroups []string
-	lastContainers []docker.Container
+	settingsTab     settingsTab
+	settingsSel     int
+	settingsGroups  []string
+	settingsFields  []string        // ordered card-field working list
+	settingsFieldOn map[string]bool // which fields are enabled
+	lastContainers  []docker.Container
 
 	// home tab state
 	homeTab  homeTab
@@ -142,6 +145,10 @@ type Model struct {
 	netSel   int // selected row in the Networks tab
 	volSel   int // selected row in the Volumes tab
 	disk     docker.DiskUsageInfo
+
+	// optional card-field enrichment (only fetched when the field is enabled)
+	inspect   map[string]docker.InspectInfo
+	logIssues map[string][2]int
 
 	// hit-testing for the Networks/Volumes list (set during render)
 	listTop     int // screen Y of the first data row
@@ -170,6 +177,7 @@ func New(client docker.Client, cfg config.Config) *Model {
 		history:    map[string]*model.RingBuffer{},
 		memHistory: map[string]*model.RingBuffer{},
 		collapsed:  cloneBoolMap(cfg.GroupCollapsed),
+		tableView:  cfg.View == "table",
 	}
 }
 
@@ -265,6 +273,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.pollCmd()
 	case containersMsg:
 		m.applyContainers(msg)
+		return m, m.enrichmentCmds()
+	case inspectAllMsg:
+		m.inspect = map[string]docker.InspectInfo(msg)
+		return m, nil
+	case logIssuesAllMsg:
+		m.logIssues = map[string][2]int(msg)
 		return m, nil
 	case imagesMsg:
 		m.images = []docker.Image(msg)
@@ -451,8 +465,8 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		return m, m.requestAction("unpause")
 	case "e":
-		if id := m.SelectedID(); id != "" {
-			return m, m.execShellCmd(id)
+		if c, ok := m.selectedContainer(); ok {
+			return m, m.execShellCmd(c)
 		}
 	case "S":
 		if g, ok := m.selectedComposeRef(); ok {
@@ -462,6 +476,14 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.requestCompose("down")
 	case "R":
 		return m, m.requestCompose("restart")
+	case "v":
+		m.tableView = !m.tableView
+		if m.tableView {
+			m.cfg.View = "table"
+		} else {
+			m.cfg.View = "cards"
+		}
+		m.saveConfig()
 	case "enter", "l", "i":
 		m.openFocus()
 		return m, tea.Batch(m.loadFocusLogsCmd(), m.loadFocusInspectCmd())
@@ -574,8 +596,8 @@ func (m *Model) handleFocusKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		return m, m.requestAction("delete")
 	case "e":
-		if id := m.SelectedID(); id != "" {
-			return m, m.execShellCmd(id)
+		if c, ok := m.selectedContainer(); ok {
+			return m, m.execShellCmd(c)
 		}
 	}
 	return m, m.updateLogs(k)
@@ -594,6 +616,22 @@ func (m *Model) homeTabSwitchCmd() tea.Cmd {
 		return m.loadDiskCmd()
 	}
 	return nil
+}
+
+// enrichmentCmds fetches per-container inspect / log data for the optional
+// "restarts" / "errors" card fields, only when those fields are enabled.
+func (m *Model) enrichmentCmds() tea.Cmd {
+	var cmds []tea.Cmd
+	if contains(m.cfg.CardFields, "restarts") {
+		cmds = append(cmds, m.inspectAllCmd())
+	}
+	if contains(m.cfg.CardFields, "errors") {
+		cmds = append(cmds, m.logIssuesAllCmd())
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 // selectedGroupCols returns the column count of the group holding the selection,

@@ -3,8 +3,10 @@ package ui
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/KewinGit/ekiben/internal/docker"
@@ -29,11 +31,24 @@ type composeEvent struct {
 }
 
 // execShellCmd suspends the TUI and opens a shell inside the container (bash if
-// available, else sh), via the docker CLI.
-func (m *Model) execShellCmd(id string) tea.Cmd {
-	c := exec.Command("docker", "exec", "-it", id, "sh", "-c",
-		"command -v bash >/dev/null 2>&1 && exec bash || exec sh")
-	return tea.ExecProcess(c, func(err error) tea.Msg { return execDoneMsg{err} })
+// available, else sh). It first prints a context header on the host terminal so
+// you know which container you're in.
+func (m *Model) execShellCmd(c docker.Container) tea.Cmd {
+	short := c.ID
+	if len(short) > 12 {
+		short = short[:12]
+	}
+	rule := strings.Repeat("─", 56)
+	header := fmt.Sprintf("ekiben exec → %s\n  image:   %s\n  id:      %s\n  project: %s\n  status:  %s",
+		c.Name, c.Image, short, c.Project, c.Status)
+	script := "printf '%s\\n%s\\n%s\\n\\n' " + shQuote(rule) + " " + shQuote(header) + " " + shQuote(rule) +
+		"; exec docker exec -it " + c.ID + " sh -c " + shQuote("command -v bash >/dev/null 2>&1 && exec bash || exec sh")
+	return tea.ExecProcess(exec.Command("sh", "-c", script), func(err error) tea.Msg { return execDoneMsg{err} })
+}
+
+// shQuote single-quotes a string for safe use in a /bin/sh command.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func composeArgs(g composeRef, sub ...string) []string {
@@ -267,6 +282,52 @@ func (m *Model) loadNetworksCmd() tea.Cmd {
 			return errMsg{err}
 		}
 		return networksMsg(nets)
+	}
+}
+
+// inspectAllMsg / logIssuesAllMsg carry per-container enrichment for the optional
+// "restarts" / "errors" card fields (fetched only when those fields are enabled).
+type inspectAllMsg map[string]docker.InspectInfo
+type logIssuesAllMsg map[string][2]int
+
+func (m *Model) containerIDs() []string {
+	ids := make([]string, 0, len(m.lastContainers))
+	for _, c := range m.lastContainers {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+func (m *Model) inspectAllCmd() tea.Cmd {
+	client := m.client
+	ids := m.containerIDs()
+	return func() tea.Msg {
+		out := map[string]docker.InspectInfo{}
+		for _, id := range ids {
+			if info, err := client.InspectInfo(context.Background(), id); err == nil {
+				out[id] = info
+			}
+		}
+		return inspectAllMsg(out)
+	}
+}
+
+func (m *Model) logIssuesAllCmd() tea.Cmd {
+	client := m.client
+	ids := m.containerIDs()
+	return func() tea.Msg {
+		out := map[string][2]int{}
+		for _, id := range ids {
+			rc, err := client.Logs(context.Background(), id, false, 200)
+			if err != nil {
+				continue
+			}
+			b, _ := readAllDemux(rc)
+			rc.Close()
+			e, w := countLogIssues(string(b))
+			out[id] = [2]int{e, w}
+		}
+		return logIssuesAllMsg(out)
 	}
 }
 

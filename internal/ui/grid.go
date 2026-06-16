@@ -233,6 +233,9 @@ func (m *Model) buildBodyFull() string {
 // buildBodyLines builds the grid body as a slice of lines and records card rects.
 // y coordinates in rects are offsets within the full body slice.
 func (m *Model) buildBodyLines() ([]string, []cardRect) {
+	if m.tableView {
+		return m.buildTableBody()
+	}
 	sel := m.SelectedID()
 
 	var lines []string
@@ -259,11 +262,18 @@ func (m *Model) buildBodyLines() ([]string, []cardRect) {
 			if rb := m.history[c.ID]; rb != nil {
 				hist = rb.Values()
 			}
-			cards = append(cards, RenderCard(CardInput{
+			ci := CardInput{
 				Container: c, Stats: m.stats[c.ID], History: hist,
 				Fields: m.cfg.CardFields, Width: cardW,
 				Selected: c.ID == sel, Theme: m.theme,
-			}))
+			}
+			if info, ok := m.inspect[c.ID]; ok {
+				ci.Restarts, ci.RestartsKnown = info.RestartCount, true
+			}
+			if li, ok := m.logIssues[c.ID]; ok {
+				ci.LogErrs, ci.LogWarns, ci.LogKnown = li[0], li[1], true
+			}
+			cards = append(cards, RenderCard(ci))
 			ids = append(ids, c.ID)
 		}
 
@@ -299,6 +309,134 @@ func (m *Model) buildBodyLines() ([]string, []cardRect) {
 		}
 	}
 
+	return lines, rects
+}
+
+// tableColSpec is the label and width of a table column for a card field.
+type tableColSpec struct {
+	label string
+	w     int
+}
+
+var tableColSpecs = map[string]tableColSpec{
+	"status": {"STATUS", 16}, "cpu": {"CPU", 6}, "mem": {"MEM", 16}, "net": {"NET", 18},
+	"port": {"PORTS", 16}, "exposed": {"EXP", 12}, "uptime": {"UP", 6}, "image": {"IMAGE", 26},
+	"pids": {"PIDS", 5}, "restarts": {"RESTR", 6}, "errors": {"LOG", 14},
+}
+
+// padTo pads/truncates s to a visual width of w.
+func padTo(s string, w int) string {
+	cw := lipgloss.Width(s)
+	if cw > w {
+		return ansi.Truncate(s, w, "…")
+	}
+	return s + strings.Repeat(" ", w-cw)
+}
+
+// tableCell renders the value for a field in the table layout.
+func (m *Model) tableCell(c docker.Container, field string) string {
+	st := m.stats[c.ID]
+	switch field {
+	case "status":
+		return statusLine(CardInput{Container: c, Theme: m.theme}, m.theme, "")
+	case "cpu":
+		return fmt.Sprintf("%.1f%%", st.CPUPerc)
+	case "mem":
+		p := 0.0
+		if st.MemLimit > 0 {
+			p = float64(st.MemUsage) / float64(st.MemLimit) * 100
+		}
+		return fmt.Sprintf("%s %.0f%%", HumanBytes(st.MemUsage), p)
+	case "net":
+		return fmt.Sprintf("↓%s ↑%s", HumanBytes(st.NetRx), HumanBytes(st.NetTx))
+	case "port":
+		if len(c.Ports) > 0 {
+			return strings.Join(c.Ports, " ")
+		}
+		return "—"
+	case "exposed":
+		if len(c.Exposed) > 0 {
+			return strings.Join(c.Exposed, " ")
+		}
+		return "—"
+	case "uptime":
+		if u := uptimeStr(c); u != "" {
+			return u
+		}
+		return "—"
+	case "image":
+		return c.Image
+	case "pids":
+		return fmt.Sprintf("%d", st.PIDs)
+	case "restarts":
+		if info, ok := m.inspect[c.ID]; ok {
+			return fmt.Sprintf("%d", info.RestartCount)
+		}
+		return "—"
+	case "errors":
+		if li, ok := m.logIssues[c.ID]; ok {
+			return fmt.Sprintf("%de %dw", li[0], li[1])
+		}
+		return "—"
+	}
+	return ""
+}
+
+// buildTableBody renders the Containers tab as a per-group table.
+func (m *Model) buildTableBody() ([]string, []cardRect) {
+	sel := m.SelectedID()
+	t := m.theme
+	dim := lipgloss.NewStyle().Foreground(t.Dim)
+	var lines []string
+	var rects []cardRect
+	m.groupRects = m.groupRects[:0]
+
+	var fields []string
+	for _, f := range m.cfg.CardFields {
+		if f == "health" {
+			continue // folded into status
+		}
+		if _, ok := tableColSpecs[f]; ok {
+			fields = append(fields, f)
+		}
+	}
+
+	for _, g := range m.groups {
+		m.groupRects = append(m.groupRects, groupRect{name: g.Name, y: len(lines)})
+		lines = append(lines, m.groupHeader(g))
+		if m.collapsed[g.Name] {
+			continue
+		}
+		nameW := 12
+		for _, c := range g.Containers {
+			if w := lipgloss.Width(c.Name); w > nameW {
+				nameW = w
+			}
+		}
+		if nameW > 30 {
+			nameW = 30
+		}
+		// header row
+		hdr := "  " + padTo("NAME", nameW)
+		for _, f := range fields {
+			hdr += " " + padTo(tableColSpecs[f].label, tableColSpecs[f].w)
+		}
+		lines = append(lines, ansi.Truncate(dim.Render(hdr), m.gridContentW, ""))
+		// data rows
+		for _, c := range g.Containers {
+			cursor := "  "
+			if c.ID == sel {
+				cursor = lipgloss.NewStyle().Foreground(t.Selected).Bold(true).Render("► ")
+			}
+			row := cursor + padTo(c.Name, nameW)
+			for _, f := range fields {
+				row += " " + padTo(m.tableCell(c, f), tableColSpecs[f].w)
+			}
+			rects = append(rects, cardRect{id: c.ID, x: 0, y: len(lines), w: m.gridContentW, h: 1})
+			lines = append(lines, ansi.Truncate(row, m.gridContentW, ""))
+		}
+		lines = append(lines, "")
+	}
 	return lines, rects
 }
 
@@ -810,8 +948,8 @@ type groupLike interface {
 
 func (m *Model) actionBar() string {
 	hints := []string{
-		"↑↓←→ navigate", "enter focus", "l logs", "e shell", "s stop", "r restart",
-		"p pause", "a start", "u unpause", "i inspect", "d delete",
+		"↑↓←→ navigate", "v cards/table", "enter focus", "l logs", "e shell",
+		"s stop", "r restart", "p pause", "a start", "u unpause", "i inspect", "d delete",
 		"S/X/R compose up/down/restart", "c settings", "q quit",
 	}
 	return wrapHints(hints, m.width, m.theme.Dim)

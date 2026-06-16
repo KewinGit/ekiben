@@ -27,43 +27,38 @@ func TestSettingsToggleField(t *testing.T) {
 	m.mode = viewSettings
 	m.enterSettings()
 	m.settingsTab = tabFields
-	// canonical index 2 = "cpu"
+	// settingsFields starts as the saved order (status,health,cpu,...); index 2 = cpu
+	if m.settingsFields[2] != "cpu" {
+		t.Fatalf("expected cpu at index 2, got %v", m.settingsFields)
+	}
 	m.settingsSel = 2
 
-	// "cpu" should be present in default config
-	if !contains(m.cfg.CardFields, "cpu") {
-		t.Fatalf("precondition: cpu should be in default CardFields, got %v", m.cfg.CardFields)
-	}
-
-	// press space → cpu should be removed
+	// space → cpu disabled (in the working set, not yet saved)
 	m.updateSettings(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
-	if contains(m.cfg.CardFields, "cpu") {
-		t.Fatalf("after first space, cpu should be removed; CardFields=%v", m.cfg.CardFields)
+	if m.settingsFieldOn["cpu"] {
+		t.Fatalf("after first space cpu should be disabled")
 	}
-
-	// press space again → cpu should be re-added
+	// space → cpu enabled again
 	m.updateSettings(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	if !m.settingsFieldOn["cpu"] {
+		t.Fatalf("after second space cpu should be enabled")
+	}
+	// enter saves: cfg.CardFields holds enabled fields in order
+	m.updateSettings(tea.KeyMsg{Type: tea.KeyEnter})
 	if !contains(m.cfg.CardFields, "cpu") {
-		t.Fatalf("after second space, cpu should be present; CardFields=%v", m.cfg.CardFields)
+		t.Fatalf("after save cpu should be present; got %v", m.cfg.CardFields)
 	}
+}
 
-	// verify canonical order: cpu must come after health (index 1) and before mem (index 3)
-	cpuPos, healthPos, memPos := -1, -1, -1
-	for i, f := range m.cfg.CardFields {
-		switch f {
-		case "cpu":
-			cpuPos = i
-		case "health":
-			healthPos = i
-		case "mem":
-			memPos = i
-		}
-	}
-	if healthPos >= 0 && cpuPos >= 0 && healthPos >= cpuPos {
-		t.Fatalf("canonical order violated: health(%d) should be before cpu(%d)", healthPos, cpuPos)
-	}
-	if cpuPos >= 0 && memPos >= 0 && cpuPos >= memPos {
-		t.Fatalf("canonical order violated: cpu(%d) should be before mem(%d)", cpuPos, memPos)
+func TestSettingsReorderField(t *testing.T) {
+	m := newTestModel()
+	m.enterSettings()
+	m.settingsTab = tabFields
+	m.settingsSel = 0 // "status"
+	first := m.settingsFields[0]
+	m.updateSettings(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("J")}) // move down
+	if m.settingsFields[1] != first || m.settingsSel != 1 {
+		t.Fatalf("field reorder failed: %v sel=%d", m.settingsFields, m.settingsSel)
 	}
 }
 

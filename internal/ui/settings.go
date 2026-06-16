@@ -17,8 +17,8 @@ const (
 
 const settingsTabCount = 3
 
-// canonicalFields defines the canonical order for card fields.
-var canonicalFields = []string{"status", "health", "cpu", "mem", "net", "port", "exposed", "uptime", "image", "pids"}
+// canonicalFields defines all available container-card fields (default order).
+var canonicalFields = []string{"status", "health", "cpu", "mem", "net", "port", "exposed", "uptime", "image", "pids", "restarts", "errors"}
 
 // refreshIntervalOpts and sortOpts and themeOpts are the cycle options for General tab.
 var refreshIntervalOpts = []string{"1s", "2s", "5s"}
@@ -29,6 +29,34 @@ func (m *Model) enterSettings() {
 	m.settingsTab = tabGroups
 	m.settingsSel = 0
 	m.settingsGroups = append([]string{}, currentGroupNames(m)...)
+	// fields working list: enabled (in saved order) first, then the rest
+	on := map[string]bool{}
+	m.settingsFields = m.settingsFields[:0]
+	for _, f := range m.cfg.CardFields {
+		if !on[f] {
+			on[f] = true
+			m.settingsFields = append(m.settingsFields, f)
+		}
+	}
+	for _, f := range canonicalFields {
+		if !on[f] {
+			m.settingsFields = append(m.settingsFields, f)
+		}
+	}
+	m.settingsFieldOn = map[string]bool{}
+	for _, f := range m.cfg.CardFields {
+		m.settingsFieldOn[f] = true
+	}
+}
+
+func (m *Model) moveField(delta int) {
+	i := m.settingsSel
+	j := i + delta
+	if i < 0 || i >= len(m.settingsFields) || j < 0 || j >= len(m.settingsFields) {
+		return
+	}
+	m.settingsFields[i], m.settingsFields[j] = m.settingsFields[j], m.settingsFields[i]
+	m.settingsSel = j
 }
 
 func currentGroupNames(m *Model) []string {
@@ -55,7 +83,7 @@ func (m *Model) settingsRowCount() int {
 	case tabGroups:
 		return len(m.settingsGroups)
 	case tabFields:
-		return len(canonicalFields)
+		return len(m.settingsFields)
 	case tabGeneral:
 		return 5
 	}
@@ -72,28 +100,6 @@ func cycle(opts []string, cur string, dir int) string {
 	}
 	// cur not found — return first option
 	return opts[0]
-}
-
-// toggleCardField adds or removes field f from m.cfg.CardFields,
-// then rebuilds CardFields in canonical order (no duplicates).
-func (m *Model) toggleCardField(f string) {
-	enabled := map[string]bool{}
-	for _, x := range m.cfg.CardFields {
-		enabled[x] = true
-	}
-	if enabled[f] {
-		delete(enabled, f)
-	} else {
-		enabled[f] = true
-	}
-	// rebuild in canonical order
-	out := make([]string, 0, len(enabled))
-	for _, cf := range canonicalFields {
-		if enabled[cf] {
-			out = append(out, cf)
-		}
-	}
-	m.cfg.CardFields = out
 }
 
 // updateSettings handles keys while in settings mode.
@@ -114,16 +120,21 @@ func (m *Model) updateSettings(k tea.KeyMsg) tea.Cmd {
 	case "J":
 		if m.settingsTab == tabGroups {
 			m.moveGroup(1)
+		} else if m.settingsTab == tabFields {
+			m.moveField(1)
 		}
 	case "K":
 		if m.settingsTab == tabGroups {
 			m.moveGroup(-1)
+		} else if m.settingsTab == tabFields {
+			m.moveField(-1)
 		}
 	case " ":
 		switch m.settingsTab {
 		case tabFields:
-			if m.settingsSel >= 0 && m.settingsSel < len(canonicalFields) {
-				m.toggleCardField(canonicalFields[m.settingsSel])
+			if m.settingsSel >= 0 && m.settingsSel < len(m.settingsFields) {
+				f := m.settingsFields[m.settingsSel]
+				m.settingsFieldOn[f] = !m.settingsFieldOn[f]
 			}
 		case tabGeneral:
 			switch m.settingsSel {
@@ -160,12 +171,21 @@ func (m *Model) updateSettings(k tea.KeyMsg) tea.Cmd {
 	case "enter":
 		m.saveSettings()
 		m.mode = viewGrid
+		return m.enrichmentCmds() // fetch data for any newly-enabled fields
 	}
 	return nil
 }
 
 func (m *Model) saveSettings() {
 	m.cfg.GroupOrder = append([]string{}, m.settingsGroups...)
+	// card fields = enabled ones, in the arranged order
+	fields := make([]string, 0, len(m.settingsFields))
+	for _, f := range m.settingsFields {
+		if m.settingsFieldOn[f] {
+			fields = append(fields, f)
+		}
+	}
+	m.cfg.CardFields = fields
 	m.saveConfig()
 	m.applyContainers(m.lastContainers)
 }
@@ -196,14 +216,15 @@ func (m *Model) settingsContent(tab settingsTab) string {
 		}
 		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[↑↓] select  [shift+J / shift+K] move  [tab] next  [enter] save"))
 	case tabFields:
-		for i, f := range canonicalFields {
+		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("fields shown on each container card (top = first):") + "\n")
+		for i, f := range m.settingsFields {
 			on := "[ ]"
-			if contains(m.cfg.CardFields, f) {
+			if m.settingsFieldOn[f] {
 				on = lipgloss.NewStyle().Foreground(t.Healthy).Render("[x]")
 			}
 			body.WriteString(cursor(i) + on + " " + f + "\n")
 		}
-		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[space] toggle  [tab] next  [enter] save"))
+		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[space] toggle  [shift+J / shift+K] reorder  [tab] next  [enter] save"))
 	case tabGeneral:
 		rows := []struct{ label, value string }{
 			{"refresh interval   ", m.cfg.RefreshInterval},
