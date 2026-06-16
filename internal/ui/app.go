@@ -29,11 +29,12 @@ type Model struct {
 	order    []string // flattened visible container IDs, in display order
 	selected int      // index into order
 
-	collapsed map[string]bool
-	cols      int
-	width     int
-	height    int
-	mode      viewMode
+	collapsed    map[string]bool
+	cols         int
+	width        int
+	height       int
+	mode         viewMode
+	focusInspect bool
 
 	// confirm modal
 	confirm    bool
@@ -142,7 +143,7 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
-	case "right", "l":
+	case "right":
 		m.move(1)
 	case "left", "h":
 		m.move(-1)
@@ -150,6 +151,26 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.move(m.cols)
 	case "up", "k":
 		m.move(-m.cols)
+	case " ", "space":
+		m.toggleCollapse()
+	case "s":
+		m.requestAction("stop")
+	case "r":
+		m.requestAction("restart")
+	case "p":
+		m.requestAction("pause")
+	case "d":
+		m.requestAction("delete")
+	case "enter":
+		m.mode = viewFocus
+	case "l":
+		m.mode = viewLogs
+		return m, m.loadLogsCmd()
+	case "i":
+		m.mode = viewFocus
+		m.focusInspect = true
+	case "c":
+		m.mode = viewSettings
 	}
 	return m, nil
 }
@@ -170,6 +191,41 @@ func (m *Model) move(delta int) {
 
 // View is implemented in grid.go (and dispatches to other views later).
 func (m *Model) View() string { return m.viewCurrent() }
+
+func (m *Model) selectedGroupName() string {
+	id := m.SelectedID()
+	for _, g := range m.groups {
+		for _, c := range g.Containers {
+			if c.ID == id {
+				return g.Name
+			}
+		}
+	}
+	return ""
+}
+
+func (m *Model) toggleCollapse() {
+	name := m.selectedGroupName()
+	if name == "" {
+		return
+	}
+	m.collapsed[name] = !m.collapsed[name]
+	m.rebuildOrder()
+}
+
+func (m *Model) requestAction(action string) {
+	id := m.SelectedID()
+	if id == "" {
+		return
+	}
+	if m.cfg.ConfirmDestructive {
+		m.confirm = true
+		m.confirmFor = action
+		m.confirmID = id
+		return
+	}
+	m.doAction(action, id)
+}
 
 // sortedGroupNames is used by settings later.
 func (m *Model) sortedGroupNames() []string {

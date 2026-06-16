@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // refreshCmd lists containers once.
@@ -54,9 +55,55 @@ func (m *Model) listenEvents() tea.Cmd {
 	}
 }
 
-// confirm helpers (real bodies in Task 17)
-func (m *Model) handleConfirmKey(tea.KeyMsg) (tea.Model, tea.Cmd) { m.confirm = false; return m, nil }
-func (m *Model) confirmBar() string                               { return "" }
+// confirm handling
+func (m *Model) handleConfirmKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch k.String() {
+	case "y", "Y":
+		action, id := m.confirmFor, m.confirmID
+		m.confirm = false
+		m.doAction(action, id)
+		return m, m.refreshCmd()
+	default: // anything else cancels
+		m.confirm = false
+	}
+	return m, nil
+}
+
+func (m *Model) confirmBar() string {
+	return lipglossDim(m, "Confirm "+m.confirmFor+" "+shortID(m.confirmID)+"?  [y/N]")
+}
+
+func (m *Model) doAction(action, id string) {
+	ctx := context.Background()
+	switch action {
+	case "stop":
+		_ = m.client.Stop(ctx, id)
+	case "restart":
+		_ = m.client.Restart(ctx, id)
+	case "pause":
+		_ = m.client.Pause(ctx, id)
+	case "unpause":
+		_ = m.client.Unpause(ctx, id)
+	case "start":
+		_ = m.client.Start(ctx, id)
+	case "delete":
+		_ = m.client.Remove(ctx, id)
+	}
+}
+
+func lipglossDim(m *Model, s string) string {
+	return lipgloss.NewStyle().Foreground(m.theme.Dim).Render(s)
+}
+
+func shortID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
+}
+
+// loadLogsCmd stub (real body in Task 19)
+func (m *Model) loadLogsCmd() tea.Cmd { return nil }
 
 // other-view stubs (real bodies in Tasks 18-20)
 func (m *Model) viewFocus() string    { return "focus" }
