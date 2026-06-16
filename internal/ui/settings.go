@@ -16,6 +16,14 @@ const (
 	tabGeneral
 )
 
+// canonicalFields defines the canonical order for card fields.
+var canonicalFields = []string{"status", "health", "cpu", "mem", "net", "port", "uptime", "image", "pids"}
+
+// refreshIntervalOpts and sortOpts and themeOpts are the cycle options for General tab.
+var refreshIntervalOpts = []string{"1s", "2s", "5s"}
+var sortOpts = []string{"name", "cpu", "mem", "status"}
+var themeOpts = []string{"dark", "light", "mono"}
+
 func (m *Model) enterSettings() {
 	m.settingsTab = tabGroups
 	m.settingsSel = 0
@@ -40,9 +48,57 @@ func (m *Model) moveGroup(delta int) {
 	m.settingsSel = j
 }
 
+// settingsRowCount returns the number of selectable rows for the active tab.
+func (m *Model) settingsRowCount() int {
+	switch m.settingsTab {
+	case tabGroups:
+		return len(m.settingsGroups)
+	case tabFields:
+		return 9
+	case tabGeneral:
+		return 5
+	}
+	return 0
+}
+
+// cycle advances cur through opts by dir (+1 or -1), wrapping around.
+func cycle(opts []string, cur string, dir int) string {
+	for i, o := range opts {
+		if o == cur {
+			n := (i + dir + len(opts)) % len(opts)
+			return opts[n]
+		}
+	}
+	// cur not found — return first option
+	return opts[0]
+}
+
+// toggleCardField adds or removes field f from m.cfg.CardFields,
+// then rebuilds CardFields in canonical order (no duplicates).
+func (m *Model) toggleCardField(f string) {
+	enabled := map[string]bool{}
+	for _, x := range m.cfg.CardFields {
+		enabled[x] = true
+	}
+	if enabled[f] {
+		delete(enabled, f)
+	} else {
+		enabled[f] = true
+	}
+	// rebuild in canonical order
+	out := make([]string, 0, len(enabled))
+	for _, cf := range canonicalFields {
+		if enabled[cf] {
+			out = append(out, cf)
+		}
+	}
+	m.cfg.CardFields = out
+}
+
 // updateSettings handles keys while in settings mode.
 func (m *Model) updateSettings(k tea.KeyMsg) tea.Cmd {
-	switch k.String() {
+	key := k.String()
+	switch key {
 	case "tab":
 		m.settingsTab = (m.settingsTab + 1) % 3
 		m.settingsSel = 0
@@ -51,7 +107,9 @@ func (m *Model) updateSettings(k tea.KeyMsg) tea.Cmd {
 			m.settingsSel--
 		}
 	case "down", "j":
-		m.settingsSel++ // clamped at render time
+		if m.settingsSel < m.settingsRowCount()-1 {
+			m.settingsSel++
+		}
 	case "J":
 		if m.settingsTab == tabGroups {
 			m.moveGroup(1)
@@ -59,6 +117,44 @@ func (m *Model) updateSettings(k tea.KeyMsg) tea.Cmd {
 	case "K":
 		if m.settingsTab == tabGroups {
 			m.moveGroup(-1)
+		}
+	case " ":
+		switch m.settingsTab {
+		case tabFields:
+			if m.settingsSel >= 0 && m.settingsSel < len(canonicalFields) {
+				m.toggleCardField(canonicalFields[m.settingsSel])
+			}
+		case tabGeneral:
+			switch m.settingsSel {
+			case 1: // confirm destructive
+				m.cfg.ConfirmDestructive = !m.cfg.ConfirmDestructive
+			case 3: // show stopped
+				m.cfg.ShowStopped = !m.cfg.ShowStopped
+			}
+		}
+	case "left":
+		if m.settingsTab == tabGeneral {
+			switch m.settingsSel {
+			case 0:
+				m.cfg.RefreshInterval = cycle(refreshIntervalOpts, m.cfg.RefreshInterval, -1)
+			case 2:
+				m.cfg.SortWithinGroup = cycle(sortOpts, m.cfg.SortWithinGroup, -1)
+			case 4:
+				m.cfg.Theme = cycle(themeOpts, m.cfg.Theme, -1)
+				m.theme = ThemeByName(m.cfg.Theme)
+			}
+		}
+	case "right":
+		if m.settingsTab == tabGeneral {
+			switch m.settingsSel {
+			case 0:
+				m.cfg.RefreshInterval = cycle(refreshIntervalOpts, m.cfg.RefreshInterval, +1)
+			case 2:
+				m.cfg.SortWithinGroup = cycle(sortOpts, m.cfg.SortWithinGroup, +1)
+			case 4:
+				m.cfg.Theme = cycle(themeOpts, m.cfg.Theme, +1)
+				m.theme = ThemeByName(m.cfg.Theme)
+			}
 		}
 	case "enter":
 		m.saveSettings()
@@ -96,19 +192,37 @@ func (m *Model) viewSettings() string {
 		}
 		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[J/K] move  [tab] next  [enter] save"))
 	case tabFields:
-		for _, f := range []string{"status", "health", "cpu", "mem", "net", "port", "uptime", "image", "pids"} {
+		for i, f := range canonicalFields {
+			cursor := "  "
+			if i == m.settingsSel {
+				cursor = lipgloss.NewStyle().Foreground(t.Selected).Render("► ")
+			}
 			on := "[ ]"
 			if contains(m.cfg.CardFields, f) {
 				on = lipgloss.NewStyle().Foreground(t.Healthy).Render("[x]")
 			}
-			body.WriteString(on + " " + f + "\n")
+			body.WriteString(cursor + on + " " + f + "\n")
 		}
+		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[space] toggle  [tab] next  [enter] save"))
 	case tabGeneral:
-		body.WriteString("refresh interval   " + m.cfg.RefreshInterval + "\n")
-		body.WriteString("confirm destructive " + boolStr(m.cfg.ConfirmDestructive) + "\n")
-		body.WriteString("sort within group   " + m.cfg.SortWithinGroup + "\n")
-		body.WriteString("show stopped        " + boolStr(m.cfg.ShowStopped) + "\n")
-		body.WriteString("theme               " + m.cfg.Theme + "\n")
+		rows := []struct {
+			label string
+			value string
+		}{
+			{"refresh interval   ", m.cfg.RefreshInterval},
+			{"confirm destructive", boolStr(m.cfg.ConfirmDestructive)},
+			{"sort within group  ", m.cfg.SortWithinGroup},
+			{"show stopped       ", boolStr(m.cfg.ShowStopped)},
+			{"theme              ", m.cfg.Theme},
+		}
+		for i, row := range rows {
+			cursor := "  "
+			if i == m.settingsSel {
+				cursor = lipgloss.NewStyle().Foreground(t.Selected).Render("► ")
+			}
+			body.WriteString(cursor + row.label + " " + row.value + "\n")
+		}
+		body.WriteString(lipgloss.NewStyle().Foreground(t.Dim).Render("\n[←/→] cycle  [space] toggle  [enter] save"))
 	}
 	return head.String() + "\n\n" + body.String()
 }
