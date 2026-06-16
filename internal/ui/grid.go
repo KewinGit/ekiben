@@ -266,17 +266,34 @@ func (m *Model) header() string {
 		w = 80
 	}
 	tab := m.tabBar()
-	banner := lipgloss.PlaceHorizontal(w, lipgloss.Center,
-		lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(ekibenBanner))
 	stats := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 		lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
 			fmt.Sprintf("%d containers · %d healthy · %d down", total, healthy, down)))
-	return tab + "\n" + banner + "\n" + stats
+	return tab + "\n" + stats
+}
+
+// homeTabNames are the labels of the top-level tabs (shared by render + hit-test).
+var homeTabNames = []string{"Containers", "Images", "Volumes", "Info"}
+
+const tabBarLeading = 1 // leading space before the first tab label
+const tabBarSep = 3     // width of the " │ " separator between labels
+
+// tabAt maps a column x on the tab-bar row to a tab, if any.
+func tabAt(x int) (homeTab, bool) {
+	pos := tabBarLeading
+	for i, name := range homeTabNames {
+		w := lipgloss.Width(name)
+		if x >= pos && x < pos+w {
+			return homeTab(i), true
+		}
+		pos += w + tabBarSep
+	}
+	return 0, false
 }
 
 // tabBar renders the top-level home tab bar.
 func (m *Model) tabBar() string {
-	names := []string{"Containers", "Images", "Volumes", "Info"}
+	names := homeTabNames
 	var b strings.Builder
 	b.WriteString(" ")
 	for i, name := range names {
@@ -415,26 +432,34 @@ func (m *Model) viewInfo() string {
 	t := m.theme
 	lbl := lipgloss.NewStyle().Foreground(t.Label)
 	dim := lipgloss.NewStyle().Foreground(t.Dim)
+	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
 	total := 0
 	for _, g := range m.groups {
 		total += len(g.Containers)
 	}
 
+	banner := lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render(ekibenBanner)
+
 	var body strings.Builder
-	body.WriteString(lbl.Render("ekiben    ") + version.String() + "\n")
-	body.WriteString(lbl.Render("config    ") + config.Path() + "\n")
-	body.WriteString(lbl.Render("containers") + fmt.Sprintf(" %d", total) + "\n")
-	body.WriteString(lbl.Render("images    ") + fmt.Sprintf(" %d", len(m.images)) + "\n")
-	body.WriteString(lbl.Render("volumes   ") + fmt.Sprintf(" %d", len(m.volumes)) + "\n\n")
-	body.WriteString(dim.Render("keys: tab/1-4 switch tab · c settings · q quit\n"))
-	body.WriteString(dim.Render("      (containers tab) ↑↓←→ navigate · enter focus\n"))
-	body.WriteString(dim.Render("      l logs · s/r/p/a/u/d actions · space collapse"))
+	body.WriteString(banner + "\n\n")
+	body.WriteString(dim.Render("A terminal UI to monitor and manage Docker containers,") + "\n")
+	body.WriteString(dim.Render("shown as cards grouped by Compose project.") + "\n\n")
+	body.WriteString(lbl.Render("version  ") + version.String() + "\n")
+	body.WriteString(lbl.Render("license  ") + "MIT" + "\n")
+	body.WriteString(lbl.Render("author   ") + "Kevin Corso" + "\n")
+	body.WriteString(lbl.Render("github   ") + accent.Render("https://github.com/KewinGit/ekiben") + "\n")
+	body.WriteString(lbl.Render("config   ") + config.Path() + "\n\n")
+	body.WriteString(lbl.Render("monitoring  ") +
+		fmt.Sprintf("%d containers · %d images · %d volumes", total, len(m.images), len(m.volumes)) + "\n\n")
+	body.WriteString(dim.Render("keys  tab / 1-4  switch tab     c  settings     q  quit") + "\n")
+	body.WriteString(dim.Render("      ↑↓←→ navigate · click select · wheel scroll") + "\n")
+	body.WriteString(dim.Render("      enter focus · l logs · s/r/p/a/u/d actions · space collapse"))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(t.Border).
-		Padding(0, 1).
+		Padding(1, 3).
 		Render(body.String())
 
 	w := m.width
@@ -445,7 +470,7 @@ func (m *Model) viewInfo() string {
 		if remaining < 1 {
 			remaining = 1
 		}
-		return m.tabBar() + "\n" + lipgloss.Place(w, remaining, lipgloss.Left, lipgloss.Top, box)
+		return m.tabBar() + "\n" + lipgloss.Place(w, remaining, lipgloss.Center, lipgloss.Center, box)
 	}
 	return m.tabBar() + "\n" + box
 }

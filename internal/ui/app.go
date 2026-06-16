@@ -482,6 +482,18 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if msg.Action != tea.MouseActionPress {
 			return m, nil
 		}
+		// Tab bar is always the first row: a click there switches tab.
+		if msg.Y == 0 {
+			if t, ok := tabAt(msg.X); ok {
+				m.homeTab = t
+				return m, m.homeTabSwitchCmd()
+			}
+			return m, nil
+		}
+		// Card selection only matters on the Containers tab.
+		if m.homeTab != homeContainers {
+			return m, nil
+		}
 		bodyX := msg.X - m.bodyLeft
 		bodyY := msg.Y - m.bodyTop + m.scrollY
 		id, ok := cardAt(m.cardRects, bodyX, bodyY)
