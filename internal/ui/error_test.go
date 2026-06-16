@@ -49,8 +49,8 @@ func TestErrorClearedOnSuccess(t *testing.T) {
 	}
 }
 
-// TestActionFailureSetsLastErr verifies that gap #4: a failed action
-// propagates to m.lastErr via doAction.
+// TestActionFailureSetsLastErr verifies that a failed async action
+// propagates to m.lastErr via doActionCmd + actionResultMsg roundtrip.
 func TestActionFailureSetsLastErr(t *testing.T) {
 	cs := []docker.Container{
 		{ID: "1", Name: "a", Project: "p", Status: docker.StatusUp},
@@ -61,22 +61,25 @@ func TestActionFailureSetsLastErr(t *testing.T) {
 
 	m := newTestModelWith(fake)
 
-	// Call doAction directly — this is the unit under test.
-	err := m.doAction("stop", "1")
-
-	if err != actionErr {
-		t.Fatalf("doAction returned %v, want %v", err, actionErr)
+	// Execute the cmd to get an actionResultMsg, then feed it to Update.
+	cmd := m.doActionCmd("stop", "1")
+	msg := cmd().(actionResultMsg)
+	if msg.err != actionErr {
+		t.Fatalf("actionResultMsg.err = %v, want %v", msg.err, actionErr)
 	}
-	if m.lastErr == nil {
+
+	m2, _ := m.Update(msg)
+	updated := m2.(*Model)
+	if updated.lastErr == nil {
 		t.Fatal("lastErr should be set after a failed action")
 	}
-	if m.lastErr != actionErr {
-		t.Fatalf("lastErr = %v, want %v", m.lastErr, actionErr)
+	if updated.lastErr != actionErr {
+		t.Fatalf("lastErr = %v, want %v", updated.lastErr, actionErr)
 	}
 }
 
-// TestActionFailureViaConfirmSetsLastErr verifies gap #4 through the confirm
-// modal path.
+// TestActionFailureViaConfirmSetsLastErr verifies the confirm modal path:
+// confirm gates execution and a failing client surfaces lastErr.
 func TestActionFailureViaConfirmSetsLastErr(t *testing.T) {
 	cs := []docker.Container{
 		{ID: "1", Name: "a", Project: "p", Status: docker.StatusUp},
@@ -88,20 +91,32 @@ func TestActionFailureViaConfirmSetsLastErr(t *testing.T) {
 	m := newTestModelWith(fake)
 
 	// Trigger confirm dialog for stop.
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
-	if !m.confirm {
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	updated := m2.(*Model)
+	if !updated.confirm {
 		t.Fatal("expected confirm modal after 's'")
 	}
 
-	// Confirm the action.
-	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
-	updated := m2.(*Model)
+	// Confirm the action — returns a cmd (doActionCmd), not yet an error.
+	m3, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	afterConfirm := m3.(*Model)
+	if afterConfirm.confirm {
+		t.Fatal("confirm should be cleared after answer")
+	}
+	if cmd == nil {
+		t.Fatal("expected a cmd from confirmed action")
+	}
 
-	if updated.lastErr == nil {
+	// Execute the cmd and feed the actionResultMsg back to Update.
+	msg := cmd().(actionResultMsg)
+	m4, _ := afterConfirm.Update(msg)
+	final := m4.(*Model)
+
+	if final.lastErr == nil {
 		t.Fatal("lastErr should be set after confirmed failed action")
 	}
-	if updated.lastErr != actionErr {
-		t.Fatalf("lastErr = %v, want %v", updated.lastErr, actionErr)
+	if final.lastErr != actionErr {
+		t.Fatalf("lastErr = %v, want %v", final.lastErr, actionErr)
 	}
 }
 

@@ -8,6 +8,9 @@ import (
 	"sync"
 )
 
+// Compile-time assertion: *Fake must implement Client.
+var _ Client = (*Fake)(nil)
+
 // Fake is an in-memory Client for tests.
 type Fake struct {
 	mu         sync.Mutex

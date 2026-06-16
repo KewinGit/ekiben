@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -64,7 +65,7 @@ func Load(path string) (Config, error) {
 	}
 	c := Default()
 	if err := yaml.Unmarshal(b, &c); err != nil {
-		return Default(), nil
+		return Default(), fmt.Errorf("parse config %s: %w", path, err)
 	}
 	return c, nil
 }

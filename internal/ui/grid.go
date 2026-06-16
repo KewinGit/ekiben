@@ -141,5 +141,5 @@ type groupLike interface {
 
 func (m *Model) actionBar() string {
 	return lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
-		"[↑↓←→] navigate  [enter] focus  [l] logs  [s] stop  [r] restart  [p] pause  [i] inspect  [d] delete  [c] settings  [q] quit")
+		"[↑↓←→] navigate  [enter] focus  [l] logs  [s] stop  [r] restart  [p] pause  [a] start  [u] unpause  [i] inspect  [d] delete  [c] settings  [q] quit")
 }

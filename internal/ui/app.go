@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"time"
 
 	"github.com/KewinGit/ekiben/internal/config"
@@ -22,9 +23,10 @@ const (
 )
 
 type Model struct {
-	client docker.Client
-	cfg    config.Config
-	theme  Theme
+	client  docker.Client
+	cfg     config.Config
+	theme   Theme
+	eventCh <-chan docker.Event
 
 	groups   []model.Group
 	stats    map[string]docker.Stats
@@ -82,7 +84,8 @@ func cloneBoolMap(in map[string]bool) map[string]bool {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.listenEvents())
+	m.eventCh, _ = m.client.Events(context.Background())
+	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent())
 }
 
 // applyContainers rebuilds groups + the flattened navigation order.
@@ -143,6 +146,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.recomputeLayout()
+		if m.logsReady {
+			m.logsVP.Width = msg.Width
+			m.logsVP.Height = msg.Height - 3
+		}
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -153,7 +160,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyContainers(msg)
 		return m, nil
 	case eventMsg:
-		return m, tea.Batch(m.refreshCmd(), m.listenEvents())
+		return m, tea.Batch(m.refreshCmd(), m.waitForEvent())
+	case actionResultMsg:
+		if msg.err != nil {
+			m.lastErr = msg.err
+		}
+		return m, m.refreshCmd()
 	case logsMsg:
 		m.handleLogsMsg(msg)
 		return m, nil
@@ -198,7 +210,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case tea.KeyRunes:
 				m.logsQuery += k.String()
 			}
-			m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+			if m.logsReady {
+				m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+			}
 			return m, nil
 		}
 		switch k.String() {
@@ -211,7 +225,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "/":
 			m.logsSearching = true
 			m.logsQuery = ""
-			m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+			if m.logsReady {
+				m.logsVP.SetContent(filterLines(m.logsRaw, m.logsQuery))
+			}
 			return m, nil
 		case "f":
 			m.logsFollow = !m.logsFollow
@@ -236,13 +252,17 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ", "space":
 		m.toggleCollapse()
 	case "s":
-		m.requestAction("stop")
+		return m, m.requestAction("stop")
 	case "r":
-		m.requestAction("restart")
+		return m, m.requestAction("restart")
 	case "p":
-		m.requestAction("pause")
+		return m, m.requestAction("pause")
 	case "d":
-		m.requestAction("delete")
+		return m, m.requestAction("delete")
+	case "a":
+		return m, m.requestAction("start")
+	case "u":
+		return m, m.requestAction("unpause")
 	case "enter":
 		m.mode = viewFocus
 	case "l":
@@ -299,16 +319,16 @@ func (m *Model) toggleCollapse() {
 	m.rebuildOrder()
 }
 
-func (m *Model) requestAction(action string) {
+func (m *Model) requestAction(action string) tea.Cmd {
 	id := m.SelectedID()
 	if id == "" {
-		return
+		return nil
 	}
 	if m.cfg.ConfirmDestructive {
 		m.confirm = true
 		m.confirmFor = action
 		m.confirmID = id
-		return
+		return nil
 	}
-	_ = m.doAction(action, id)
+	return m.doActionCmd(action, id)
 }

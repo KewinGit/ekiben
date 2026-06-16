@@ -46,6 +46,6 @@ func (m *Model) viewFocus() string {
 		b.WriteString("port " + strings.Join(c.Ports, " ") + "\n")
 	}
 	b.WriteString("\n" + lipgloss.NewStyle().Foreground(t.Dim).Render(
-		"[esc] back  [l] logs  [s] stop  [r] restart"))
+		"[esc] back  [l] logs  [s] stop  [r] restart  [a] start  [u] unpause"))
 	return b.String()
 }

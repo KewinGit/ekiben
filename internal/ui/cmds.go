@@ -43,15 +43,43 @@ func (m *Model) pollCmd() tea.Cmd {
 	})
 }
 
-// listenEvents turns the docker event channel into tea.Msgs.
-func (m *Model) listenEvents() tea.Cmd {
-	evCh, _ := m.client.Events(context.Background())
+// waitForEvent reads the next event from the already-open event channel.
+// It must NOT call m.client.Events again — the channel is opened once in Init.
+func (m *Model) waitForEvent() tea.Cmd {
+	ch := m.eventCh
 	return func() tea.Msg {
-		ev, ok := <-evCh
+		ev, ok := <-ch
 		if !ok {
 			return nil
 		}
 		return eventMsg(ev)
+	}
+}
+
+// actionResultMsg carries the result of an async container action.
+type actionResultMsg struct{ err error }
+
+// doActionCmd runs a container action asynchronously and returns actionResultMsg.
+func (m *Model) doActionCmd(action, id string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		var err error
+		ctx := context.Background()
+		switch action {
+		case "stop":
+			err = client.Stop(ctx, id)
+		case "restart":
+			err = client.Restart(ctx, id)
+		case "pause":
+			err = client.Pause(ctx, id)
+		case "unpause":
+			err = client.Unpause(ctx, id)
+		case "start":
+			err = client.Start(ctx, id)
+		case "delete":
+			err = client.Remove(ctx, id)
+		}
+		return actionResultMsg{err}
 	}
 }
 
@@ -61,8 +89,7 @@ func (m *Model) handleConfirmKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y", "Y":
 		action, id := m.confirmFor, m.confirmID
 		m.confirm = false
-		_ = m.doAction(action, id)
-		return m, m.refreshCmd()
+		return m, m.doActionCmd(action, id)
 	default: // anything else cancels
 		m.confirm = false
 	}
@@ -71,29 +98,6 @@ func (m *Model) handleConfirmKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) confirmBar() string {
 	return lipglossDim(m, "Confirm "+m.confirmFor+" "+shortID(m.confirmID)+"?  [y/N]")
-}
-
-func (m *Model) doAction(action, id string) error {
-	ctx := context.Background()
-	var err error
-	switch action {
-	case "stop":
-		err = m.client.Stop(ctx, id)
-	case "restart":
-		err = m.client.Restart(ctx, id)
-	case "pause":
-		err = m.client.Pause(ctx, id)
-	case "unpause":
-		err = m.client.Unpause(ctx, id)
-	case "start":
-		err = m.client.Start(ctx, id)
-	case "delete":
-		err = m.client.Remove(ctx, id)
-	}
-	if err != nil {
-		m.lastErr = err
-	}
-	return err
 }
 
 func lipglossDim(m *Model, s string) string {

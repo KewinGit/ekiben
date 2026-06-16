@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -28,6 +29,21 @@ func TestLoadMissingWritesDefault(t *testing.T) {
 	}
 	if c2.Theme != "dark" || len(c2.CardFields) != len(c.CardFields) {
 		t.Fatalf("reload mismatch: %+v vs %+v", c, c2)
+	}
+}
+
+func TestLoadMalformedYAMLReturnsErrorAndDefaults(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(p, []byte(":\tinvalid: yaml: {{{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for malformed YAML, got nil")
+	}
+	// Should still return defaults.
+	if c.Theme != "dark" {
+		t.Fatalf("expected default theme, got %q", c.Theme)
 	}
 }
 
