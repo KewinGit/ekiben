@@ -43,13 +43,13 @@ type Model struct {
 	confirmID  string
 
 	// logs view
-	logsVP       viewport.Model
-	logsID       string
-	logsReady    bool
-	logsRaw      string // full unfiltered content
-	logsQuery    string // current search query
-	logsSearching bool  // true while typing a query
-	logsFollow   bool  // true when follow mode is active
+	logsVP        viewport.Model
+	logsID        string
+	logsReady     bool
+	logsRaw       string // full unfiltered content
+	logsQuery     string // current search query
+	logsSearching bool   // true while typing a query
+	logsFollow    bool   // true when follow mode is active
 }
 
 func New(client docker.Client, cfg config.Config) *Model {
@@ -227,6 +227,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = viewFocus
 	case "l":
 		m.mode = viewLogs
+		m.logsFollow = false
+		m.logsSearching = false
+		m.logsQuery = ""
 		return m, m.loadLogsCmd()
 	case "i":
 		m.mode = viewFocus
