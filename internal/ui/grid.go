@@ -43,6 +43,10 @@ func (m *Model) viewCurrent() string {
 
 func (m *Model) viewGrid() string {
 	var b strings.Builder
+	if m.lastErr != nil {
+		b.WriteString(lipgloss.NewStyle().Foreground(m.theme.Problem).
+			Render("⚠ Docker error: "+m.lastErr.Error()+" — retrying…") + "\n\n")
+	}
 	b.WriteString(m.header() + "\n\n")
 	cardW := CardWidth(m.width, m.cols)
 	sel := m.SelectedID()

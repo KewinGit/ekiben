@@ -14,7 +14,11 @@ func newTestModel() *Model {
 		{ID: "2", Name: "b", Project: "p", Status: docker.StatusUp},
 		{ID: "3", Name: "c", Project: "p", Status: docker.StatusUp},
 	}
-	m := New(docker.NewFake(cs), config.Default())
+	return newTestModelFromFake(docker.NewFake(cs), cs)
+}
+
+func newTestModelFromFake(fake *docker.Fake, cs []docker.Container) *Model {
+	m := New(fake, config.Default())
 	m.applyContainers(cs)
 	m.width, m.height = 100, 40
 	m.recomputeLayout()

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"sort"
+	"time"
 
 	"github.com/KewinGit/ekiben/internal/config"
 	"github.com/KewinGit/ekiben/internal/docker"
@@ -9,6 +10,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+type retryMsg struct{}
 
 type viewMode int
 
@@ -56,6 +59,8 @@ type Model struct {
 	settingsSel    int
 	settingsGroups []string
 	lastContainers []docker.Container
+
+	lastErr error
 }
 
 func New(client docker.Client, cfg config.Config) *Model {
@@ -98,6 +103,7 @@ func (m *Model) applyContainers(cs []docker.Container) {
 		model.SortContainers(m.groups[i].Containers, m.stats, m.cfg.SortWithinGroup)
 	}
 	m.rebuildOrder()
+	m.lastErr = nil
 }
 
 func (m *Model) rebuildOrder() {
@@ -157,6 +163,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(m.loadLogsCmd(), m.logsTickCmd())
 		}
 		return m, nil
+	case errMsg:
+		m.lastErr = msg.err
+		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return retryMsg{} })
+	case retryMsg:
+		return m, m.refreshCmd()
 	}
 	return m, nil
 }
@@ -300,7 +311,7 @@ func (m *Model) requestAction(action string) {
 		m.confirmID = id
 		return
 	}
-	m.doAction(action, id)
+	_ = m.doAction(action, id)
 }
 
 // sortedGroupNames is used by settings later.

@@ -61,7 +61,7 @@ func (m *Model) handleConfirmKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y", "Y":
 		action, id := m.confirmFor, m.confirmID
 		m.confirm = false
-		m.doAction(action, id)
+		_ = m.doAction(action, id)
 		return m, m.refreshCmd()
 	default: // anything else cancels
 		m.confirm = false
@@ -73,22 +73,27 @@ func (m *Model) confirmBar() string {
 	return lipglossDim(m, "Confirm "+m.confirmFor+" "+shortID(m.confirmID)+"?  [y/N]")
 }
 
-func (m *Model) doAction(action, id string) {
+func (m *Model) doAction(action, id string) error {
 	ctx := context.Background()
+	var err error
 	switch action {
 	case "stop":
-		_ = m.client.Stop(ctx, id)
+		err = m.client.Stop(ctx, id)
 	case "restart":
-		_ = m.client.Restart(ctx, id)
+		err = m.client.Restart(ctx, id)
 	case "pause":
-		_ = m.client.Pause(ctx, id)
+		err = m.client.Pause(ctx, id)
 	case "unpause":
-		_ = m.client.Unpause(ctx, id)
+		err = m.client.Unpause(ctx, id)
 	case "start":
-		_ = m.client.Start(ctx, id)
+		err = m.client.Start(ctx, id)
 	case "delete":
-		_ = m.client.Remove(ctx, id)
+		err = m.client.Remove(ctx, id)
 	}
+	if err != nil {
+		m.lastErr = err
+	}
+	return err
 }
 
 func lipglossDim(m *Model, s string) string {

@@ -15,6 +15,8 @@ type Fake struct {
 	StatsByID  map[string]Stats
 	events     chan Event
 	errs       chan error
+	// ActionErr, when non-nil, is returned by all action methods (Stop/Start/etc.).
+	ActionErr error
 }
 
 func NewFake(cs []Container) *Fake {
@@ -60,12 +62,47 @@ func (f *Fake) setStatus(id string, s Status) error {
 	return errors.New("not found")
 }
 
-func (f *Fake) Start(_ context.Context, id string) error   { return f.setStatus(id, StatusUp) }
-func (f *Fake) Stop(_ context.Context, id string) error    { return f.setStatus(id, StatusExited) }
-func (f *Fake) Restart(_ context.Context, id string) error { return f.setStatus(id, StatusUp) }
-func (f *Fake) Pause(_ context.Context, id string) error   { return f.setStatus(id, StatusPaused) }
-func (f *Fake) Unpause(_ context.Context, id string) error { return f.setStatus(id, StatusUp) }
+func (f *Fake) actionErr() error {
+	if f.ActionErr != nil {
+		return f.ActionErr
+	}
+	return nil
+}
+
+func (f *Fake) Start(_ context.Context, id string) error {
+	if err := f.actionErr(); err != nil {
+		return err
+	}
+	return f.setStatus(id, StatusUp)
+}
+func (f *Fake) Stop(_ context.Context, id string) error {
+	if err := f.actionErr(); err != nil {
+		return err
+	}
+	return f.setStatus(id, StatusExited)
+}
+func (f *Fake) Restart(_ context.Context, id string) error {
+	if err := f.actionErr(); err != nil {
+		return err
+	}
+	return f.setStatus(id, StatusUp)
+}
+func (f *Fake) Pause(_ context.Context, id string) error {
+	if err := f.actionErr(); err != nil {
+		return err
+	}
+	return f.setStatus(id, StatusPaused)
+}
+func (f *Fake) Unpause(_ context.Context, id string) error {
+	if err := f.actionErr(); err != nil {
+		return err
+	}
+	return f.setStatus(id, StatusUp)
+}
 func (f *Fake) Remove(_ context.Context, id string) error {
+	if err := f.actionErr(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := f.containers[:0]
