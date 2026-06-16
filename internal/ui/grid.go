@@ -132,7 +132,6 @@ func (m *Model) buildBodyFull() string {
 // buildBodyLines builds the grid body as a slice of lines and records card rects.
 // y coordinates in rects are offsets within the full body slice.
 func (m *Model) buildBodyLines() ([]string, []cardRect) {
-	cardW := CardWidth(m.width, m.cols)
 	sel := m.SelectedID()
 
 	var lines []string
@@ -145,6 +144,9 @@ func (m *Model) buildBodyLines() ([]string, []cardRect) {
 		if m.collapsed[g.Name] {
 			continue
 		}
+
+		// per-group layout: width adapts so the longest name in THIS compose fits
+		cols, cardW := m.groupLayout(g)
 
 		// build rendered cards for this group
 		var cards []string
@@ -162,11 +164,7 @@ func (m *Model) buildBodyLines() ([]string, []cardRect) {
 			ids = append(ids, c.ID)
 		}
 
-		// lay out in rows of m.cols
-		cols := m.cols
-		if cols < 1 {
-			cols = 1
-		}
+		// lay out in rows of cols (computed per group above)
 		for rowStart := 0; rowStart < len(cards); rowStart += cols {
 			rowEnd := rowStart + cols
 			if rowEnd > len(cards) {
@@ -261,13 +259,65 @@ func (m *Model) header() string {
 }
 
 func (m *Model) groupHeader(g groupLike) string {
+	name := g.GroupName()
 	arrow := "▾"
-	if m.collapsed[g.GroupName()] {
+	if m.collapsed[name] {
 		arrow = "▸"
 	}
-	style := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true)
-	return style.Render(fmt.Sprintf("%s %s", arrow, g.GroupName())) +
-		lipgloss.NewStyle().Foreground(m.theme.Dim).Render(fmt.Sprintf("  · %d", len(g.GetContainers())))
+	containers := g.GetContainers()
+	title := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).
+		Render(fmt.Sprintf("%s %s", arrow, name))
+
+	// Aggregate sums, but only for fields currently visible on the cards.
+	var cpu float64
+	var mem, rx, tx, pids uint64
+	for _, c := range containers {
+		s := m.stats[c.ID]
+		cpu += s.CPUPerc
+		mem += s.MemUsage
+		rx += s.NetRx
+		tx += s.NetTx
+		pids += s.PIDs
+	}
+	parts := []string{fmt.Sprintf("· %d", len(containers))}
+	if contains(m.cfg.CardFields, "cpu") {
+		parts = append(parts, fmt.Sprintf("cpu %.1f%%", cpu))
+	}
+	if contains(m.cfg.CardFields, "mem") {
+		parts = append(parts, fmt.Sprintf("mem %s", HumanBytes(mem)))
+	}
+	if contains(m.cfg.CardFields, "net") {
+		parts = append(parts, fmt.Sprintf("net ↓%s ↑%s", HumanBytes(rx), HumanBytes(tx)))
+	}
+	if contains(m.cfg.CardFields, "pids") {
+		parts = append(parts, fmt.Sprintf("pids %d", pids))
+	}
+	return title + lipgloss.NewStyle().Foreground(m.theme.Dim).Render("  "+strings.Join(parts, " · "))
+}
+
+// groupLayout computes, for a single compose group, how many columns fit and how
+// wide each card is, sized so the longest container name in THIS group is readable.
+func (m *Model) groupLayout(g model.Group) (cols, cardW int) {
+	minW := MinCardWidth
+	for _, c := range g.Containers {
+		// name + chrome: status dot, space, " ►" marker, 2 borders, slack
+		if w := lipgloss.Width(c.Name) + 8; w > minW {
+			minW = w
+		}
+	}
+	avail := m.width
+	if avail < MinCardWidth {
+		avail = MinCardWidth
+	}
+	if minW > avail {
+		minW = avail
+	}
+	cols = (avail + CardGap) / (minW + CardGap)
+	if cols < 1 {
+		cols = 1
+	}
+	cardW = CardWidth(avail, cols)
+	return cols, cardW
 }
 
 // groupLike lets header code accept model.Group without import cycle friction.

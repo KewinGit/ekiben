@@ -37,8 +37,7 @@ func RenderCard(in CardInput) string {
 		case "health":
 			// folded into the status line for compactness; skip separate line
 		case "cpu":
-			spark := Sparkline(in.History, 100)
-			lines = append(lines, fmt.Sprintf("%s %s %4.1f%%", lbl.Render("cpu"), spark, in.Stats.CPUPerc))
+			lines = append(lines, fmt.Sprintf("%s %5.1f%%", lbl.Render("cpu"), in.Stats.CPUPerc))
 		case "mem":
 			memPct := 0.0
 			if in.Stats.MemLimit > 0 {

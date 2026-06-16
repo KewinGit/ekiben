@@ -295,9 +295,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "left", "h":
 		m.move(-1)
 	case "down", "j":
-		m.move(m.cols)
+		m.move(m.selectedGroupCols())
 	case "up", "k":
-		m.move(-m.cols)
+		m.move(-m.selectedGroupCols())
 	case " ", "space":
 		m.toggleCollapse()
 	case "s":
@@ -332,6 +332,24 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.enterSettings()
 	}
 	return m, nil
+}
+
+// selectedGroupCols returns the column count of the group holding the selection,
+// used so vertical navigation steps by the right amount per (variable-width) group.
+func (m *Model) selectedGroupCols() int {
+	id := m.SelectedID()
+	for _, g := range m.groups {
+		for _, c := range g.Containers {
+			if c.ID == id {
+				cols, _ := m.groupLayout(g)
+				return cols
+			}
+		}
+	}
+	if m.cols < 1 {
+		return 1
+	}
+	return m.cols
 }
 
 func (m *Model) move(delta int) {
