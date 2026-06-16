@@ -151,9 +151,11 @@ func (m *Model) buildBodyLines() ([]string, []cardRect) {
 
 	var lines []string
 	var rects []cardRect
+	m.groupRects = m.groupRects[:0]
 
 	for _, g := range m.groups {
-		// group header line
+		// group header line (record its body row for click-to-collapse)
+		m.groupRects = append(m.groupRects, groupRect{name: g.Name, y: len(lines)})
 		lines = append(lines, m.groupHeader(g))
 
 		if m.collapsed[g.Name] {

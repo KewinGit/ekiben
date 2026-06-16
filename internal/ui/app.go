@@ -19,6 +19,12 @@ type cardRect struct {
 	w, h int
 }
 
+// groupRect marks the body line of a group header (for click-to-collapse).
+type groupRect struct {
+	name string
+	y    int
+}
+
 // cardAt returns the id of the rect that contains (x, y) or ("", false).
 // x/y are in pre-scroll body coordinates.
 func cardAt(rects []cardRect, x, y int) (string, bool) {
@@ -73,13 +79,14 @@ type Model struct {
 	focusInspect bool
 
 	// scrollable grid state
-	scrollY      int        // vertical scroll offset in body lines
-	cardRects    []cardRect // hit-test rects from last render
-	bodyTop      int        // screen line where body content starts
-	bodyLeft     int        // screen column where body content starts
-	gridAvailH   int        // visible body height from last render
-	gridBodyH    int        // total body height from last render
-	gridContentW int        // body content width (inside the panel border)
+	scrollY      int         // vertical scroll offset in body lines
+	cardRects    []cardRect  // hit-test rects from last render
+	groupRects   []groupRect // group-header hit-test rows from last render
+	bodyTop      int         // screen line where body content starts
+	bodyLeft     int         // screen column where body content starts
+	gridAvailH   int         // visible body height from last render
+	gridBodyH    int         // total body height from last render
+	gridContentW int         // body content width (inside the panel border)
 
 	// confirm modal
 	confirm    bool
@@ -490,12 +497,20 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		// Card selection only matters on the Containers tab.
+		// Card selection / group collapse only matter on the Containers tab.
 		if m.homeTab != homeContainers {
 			return m, nil
 		}
 		bodyX := msg.X - m.bodyLeft
 		bodyY := msg.Y - m.bodyTop + m.scrollY
+		// click on a group header row toggles its collapse
+		for _, gr := range m.groupRects {
+			if gr.y == bodyY {
+				m.collapsed[gr.name] = !m.collapsed[gr.name]
+				m.rebuildOrder()
+				return m, nil
+			}
+		}
 		id, ok := cardAt(m.cardRects, bodyX, bodyY)
 		if ok {
 			for i, oid := range m.order {
