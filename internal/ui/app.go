@@ -122,12 +122,14 @@ type Model struct {
 	volSel   int // selected row in the Volumes tab
 
 	lastErr error
+	cfgPath string // where to persist config; empty disables saving (tests)
 }
 
 func New(client docker.Client, cfg config.Config) *Model {
 	return &Model{
 		client:     client,
 		cfg:        cfg,
+		cfgPath:    config.Path(),
 		theme:      ThemeByName(cfg.Theme),
 		stats:      map[string]docker.Stats{},
 		history:    map[string]*model.RingBuffer{},
@@ -626,8 +628,17 @@ func (m *Model) toggleGroupCollapsed(name string) {
 	}
 	m.collapsed[name] = !m.collapsed[name]
 	m.cfg.GroupCollapsed = cloneBoolMap(m.collapsed)
-	_ = m.cfg.Save(config.Path())
+	m.saveConfig()
 	m.rebuildOrder()
+}
+
+// saveConfig persists the config to cfgPath. A blank cfgPath disables saving so
+// tests never clobber the user's real ~/.config/ekiben/config.yml.
+func (m *Model) saveConfig() {
+	if m.cfgPath == "" {
+		return
+	}
+	_ = m.cfg.Save(m.cfgPath)
 }
 
 func (m *Model) requestAction(action string) tea.Cmd {

@@ -19,6 +19,7 @@ func newTestModel() *Model {
 
 func newTestModelFromFake(fake *docker.Fake, cs []docker.Container) *Model {
 	m := New(fake, config.Default())
+	m.cfgPath = "" // never write the real config from tests
 	m.applyContainers(cs)
 	m.width, m.height = 100, 40
 	m.recomputeLayout()

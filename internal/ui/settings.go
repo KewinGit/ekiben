@@ -3,7 +3,6 @@ package ui
 import (
 	"strings"
 
-	"github.com/KewinGit/ekiben/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -167,7 +166,7 @@ func (m *Model) updateSettings(k tea.KeyMsg) tea.Cmd {
 
 func (m *Model) saveSettings() {
 	m.cfg.GroupOrder = append([]string{}, m.settingsGroups...)
-	_ = m.cfg.Save(config.Path())
+	m.saveConfig()
 	m.applyContainers(m.lastContainers)
 }
 
