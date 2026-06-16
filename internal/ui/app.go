@@ -145,6 +145,7 @@ type Model struct {
 	netSel   int // selected row in the Networks tab
 	volSel   int // selected row in the Volumes tab
 	disk     docker.DiskUsageInfo
+	sys      docker.SystemInfo
 
 	// optional card-field enrichment (only fetched when the field is enabled)
 	inspect   map[string]docker.InspectInfo
@@ -191,7 +192,7 @@ func cloneBoolMap(in map[string]bool) map[string]bool {
 
 func (m *Model) Init() tea.Cmd {
 	m.eventCh, _ = m.client.Events(context.Background())
-	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd(), m.loadDiskCmd())
+	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd(), m.loadDiskCmd(), m.loadSysCmd())
 }
 
 // applyContainers rebuilds groups + the flattened navigation order.
@@ -246,7 +247,7 @@ func (m *Model) SelectedID() string {
 }
 
 func (m *Model) recomputeLayout() {
-	m.gridContentW = m.width - 2
+	m.gridContentW = m.width - 3 // -2 border, -1 scrollbar
 	if m.gridContentW < MinCardWidth {
 		m.gridContentW = MinCardWidth
 	}
@@ -291,6 +292,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case diskMsg:
 		m.disk = docker.DiskUsageInfo(msg)
+		return m, nil
+	case sysMsg:
+		m.sys = docker.SystemInfo(msg)
 		return m, nil
 	case eventMsg:
 		return m, tea.Batch(m.refreshCmd(), m.waitForEvent())
@@ -432,6 +436,14 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "d":
 			m.requestListDelete()
+		}
+		return m, nil
+	}
+
+	// Info tab: p runs `docker system prune`.
+	if m.homeTab == homeInfo {
+		if k.String() == "p" {
+			return m, m.requestPrune()
 		}
 		return m, nil
 	}
@@ -613,8 +625,22 @@ func (m *Model) homeTabSwitchCmd() tea.Cmd {
 	case homeNetworks:
 		return m.loadNetworksCmd()
 	case homeInfo:
-		return m.loadDiskCmd()
+		return tea.Batch(m.loadDiskCmd(), m.loadSysCmd())
 	}
+	return nil
+}
+
+// requestPrune confirms then runs `docker system prune`.
+func (m *Model) requestPrune() tea.Cmd {
+	msg := "removes stopped containers, unused networks,\ndangling images and build cache"
+	if d := m.disk.TotalReclaim(); d > 0 {
+		msg += "\n\n~" + HumanBytes(uint64(d)) + " reclaimable"
+	}
+	act := func() tea.Cmd { return m.pruneCmd() }
+	if !m.cfg.ConfirmDestructive {
+		return act()
+	}
+	m.modal = modalState{kind: modalConfirm, title: "docker system prune", msg: msg, danger: true, steps: 1, action: act}
 	return nil
 }
 

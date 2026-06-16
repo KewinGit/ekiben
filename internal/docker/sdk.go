@@ -405,4 +405,24 @@ func (s *SDK) DiskUsage(ctx context.Context) (DiskUsageInfo, error) {
 	return info, nil
 }
 
+func (s *SDK) SystemInfo(ctx context.Context) (SystemInfo, error) {
+	i, err := s.cli.Info(ctx)
+	if err != nil {
+		return SystemInfo{}, err
+	}
+	return SystemInfo{
+		Name:              i.Name,
+		ServerVersion:     i.ServerVersion,
+		OperatingSystem:   i.OperatingSystem,
+		Architecture:      i.Architecture,
+		KernelVersion:     i.KernelVersion,
+		StorageDriver:     i.Driver,
+		NCPU:              i.NCPU,
+		MemTotal:          i.MemTotal,
+		ContainersRunning: i.ContainersRunning,
+		ContainersStopped: i.ContainersStopped,
+		Images:            i.Images,
+	}, nil
+}
+
 func (s *SDK) Close() error { return s.cli.Close() }

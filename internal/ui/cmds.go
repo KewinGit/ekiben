@@ -343,3 +343,22 @@ func (m *Model) loadDiskCmd() tea.Cmd {
 		return diskMsg(d)
 	}
 }
+
+type sysMsg docker.SystemInfo
+
+func (m *Model) loadSysCmd() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		s, err := client.SystemInfo(context.Background())
+		if err != nil {
+			return sysMsg{}
+		}
+		return sysMsg(s)
+	}
+}
+
+// pruneCmd streams `docker system prune -f` into the in-app pane.
+func (m *Model) pruneCmd() tea.Cmd {
+	m.homeTab = homeContainers // show the streaming pane
+	return m.startComposeCmd("docker system prune", []string{"system", "prune", "-f"})
+}

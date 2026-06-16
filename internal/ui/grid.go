@@ -163,8 +163,9 @@ func (m *Model) viewGrid() string {
 	footerH := lipgloss.Height(footer)
 	errH := len(errBannerLines)
 
-	// The grid lives inside a rounded panel border (1 line/col on each side).
-	m.gridContentW = m.width - 2
+	// The grid lives inside a rounded panel border (1 line/col on each side),
+	// with a 1-col scrollbar reserved on the right.
+	m.gridContentW = m.width - 3
 	if m.gridContentW < MinCardWidth {
 		m.gridContentW = MinCardWidth
 	}
@@ -204,11 +205,13 @@ func (m *Model) viewGrid() string {
 		windowLines = append(windowLines, "")
 	}
 
+	bodyBlock := lipgloss.NewStyle().Width(m.gridContentW).Render(strings.Join(windowLines, "\n"))
+	bar := scrollbar(availH, m.gridBodyH, m.scrollY, availH, m.theme)
 	panel := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.Border).
-		Width(m.gridContentW).
-		Render(strings.Join(windowLines, "\n"))
+		Width(m.width - 2).
+		Render(lipgloss.JoinHorizontal(lipgloss.Top, bodyBlock, bar))
 
 	// --- assemble ---
 	var b strings.Builder
@@ -812,68 +815,78 @@ func (m *Model) viewInfo() string {
 	lbl := lipgloss.NewStyle().Foreground(t.Label)
 	dim := lipgloss.NewStyle().Foreground(t.Dim)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
-
-	total := 0
-	for _, g := range m.groups {
-		total += len(g.Containers)
+	bold := lipgloss.NewStyle().Foreground(t.Header).Bold(true)
+	w := m.width
+	if w < 1 {
+		w = 80
+	}
+	tab := m.tabBar()
+	dash := func(s string) string {
+		if s == "" {
+			return dim.Render("—")
+		}
+		return s
 	}
 
-	banner := lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render(ekibenBanner)
+	banner := lipgloss.PlaceHorizontal(w, lipgloss.Center, bold.Render(ekibenBanner))
+	tagline := lipgloss.PlaceHorizontal(w, lipgloss.Center,
+		accent.Render("駅弁")+dim.Render("  a railway-station bento for your Docker"))
 
-	var body strings.Builder
-	body.WriteString(banner + "\n\n")
-	body.WriteString(lipgloss.NewStyle().Foreground(t.Accent).Render("駅弁") +
-		dim.Render("  ekiben — a railway-station bento for your Docker:") + "\n")
-	body.WriteString(dim.Render("every compose project a compartment, each container a tasty morsel.") + "\n\n")
-	body.WriteString(lbl.Render("version  ") + version.String() + "\n")
-	body.WriteString(lbl.Render("license  ") + "MIT" + "\n")
-	body.WriteString(lbl.Render("author   ") + "Kevin Corso" + "\n")
+	colW := (w-3)/2 - 2
+	if colW < 18 {
+		colW = 18
+	}
+
+	// --- About (ekiben) ---
 	ghURL := "https://github.com/KewinGit/ekiben"
-	body.WriteString(lbl.Render("github   ") + hyperlink(ghURL, accent.Underline(true).Render(ghURL)) + "\n")
-	body.WriteString(lbl.Render("config   ") + config.Path() + "\n\n")
-	body.WriteString(lbl.Render("monitoring  ") +
-		fmt.Sprintf("%d containers · %d images · %d volumes · %d networks", total, len(m.images), len(m.volumes), len(m.networks)) + "\n\n")
+	var about strings.Builder
+	about.WriteString(bold.Render("ekiben") + "\n")
+	about.WriteString(lbl.Render("version ") + " " + version.String() + "\n")
+	about.WriteString(lbl.Render("license ") + " MIT\n")
+	about.WriteString(lbl.Render("author  ") + " Kevin Corso\n")
+	about.WriteString(lbl.Render("github  ") + " " + hyperlink(ghURL, accent.Underline(true).Render("KewinGit/ekiben")) + "\n")
+	about.WriteString(lbl.Render("config  ") + " " + ansi.Truncate(config.Path(), colW-9, "…"))
 
-	// disk usage (docker system df) with reclaimable preview
+	// --- Docker engine (docker info) ---
+	s := m.sys
+	var eng strings.Builder
+	eng.WriteString(bold.Render("docker engine") + "\n")
+	eng.WriteString(lbl.Render("host    ") + " " + dash(ansi.Truncate(s.Name, colW-9, "…")) + "\n")
+	eng.WriteString(lbl.Render("version ") + " " + dash(s.ServerVersion) + "\n")
+	eng.WriteString(lbl.Render("os/arch ") + " " + dash(strings.TrimSpace(s.OperatingSystem+" "+s.Architecture)) + "\n")
+	eng.WriteString(lbl.Render("kernel  ") + " " + dash(ansi.Truncate(s.KernelVersion, colW-9, "…")) + "\n")
+	eng.WriteString(lbl.Render("storage ") + " " + dash(s.StorageDriver) + "\n")
+	eng.WriteString(lbl.Render("cpu/mem ") + " " + fmt.Sprintf("%d cores · %s", s.NCPU, HumanBytes(uint64(s.MemTotal))))
+
+	panelStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).Padding(0, 1)
+	cols := lipgloss.JoinHorizontal(lipgloss.Top,
+		panelStyle.Width(colW).Render(about.String()), "  ",
+		panelStyle.Width(colW).Render(eng.String()))
+
+	// --- Disk usage (docker system df) + prune ---
 	d := m.disk
 	reclaimRow := func(label string, size, reclaim int64) string {
 		r := dim.Render("—")
 		if reclaim > 0 {
 			r = lipgloss.NewStyle().Foreground(t.Healthy).Render(HumanBytes(uint64(reclaim)) + " reclaimable")
 		}
-		return lbl.Render(label) + fmt.Sprintf(" %10s   ", HumanBytes(uint64(size))) + r
+		return lbl.Render(label) + fmt.Sprintf("  %10s    ", HumanBytes(uint64(size))) + r
 	}
-	body.WriteString(lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render("disk usage") +
-		dim.Render("  (docker system df)") + "\n")
-	body.WriteString(reclaimRow("images     ", d.ImagesSize, d.ImagesReclaim) + "\n")
-	body.WriteString(reclaimRow("containers ", d.ContainersSize, d.ContainersReclaim) + "\n")
-	body.WriteString(reclaimRow("volumes    ", d.VolumesSize, d.VolumesReclaim) + "\n")
-	body.WriteString(reclaimRow("build cache", d.BuildCacheSize, d.BuildCacheReclaim) + "\n")
-	body.WriteString(lbl.Render("→ prune    ") + " " +
-		lipgloss.NewStyle().Foreground(t.Warn).Bold(true).Render("~"+HumanBytes(uint64(d.TotalReclaim()))+" reclaimable") +
-		dim.Render("  (docker system prune)") + "\n\n")
-	body.WriteString(dim.Render("keys  tab / 1-5  switch tab     c  settings     q  quit") + "\n")
-	body.WriteString(dim.Render("      ↑↓←→ navigate · click select · wheel scroll · enter focus") + "\n")
-	body.WriteString(dim.Render("      l logs · e shell · s/r/p/a/u/d actions · space collapse") + "\n")
-	body.WriteString(dim.Render("      S/X/R compose up/down/restart (selected project)"))
+	var disk strings.Builder
+	disk.WriteString(bold.Render("disk usage") + dim.Render("  (docker system df)") + "\n")
+	disk.WriteString(reclaimRow("images     ", d.ImagesSize, d.ImagesReclaim) + "\n")
+	disk.WriteString(reclaimRow("containers ", d.ContainersSize, d.ContainersReclaim) + "\n")
+	disk.WriteString(reclaimRow("volumes    ", d.VolumesSize, d.VolumesReclaim) + "\n")
+	disk.WriteString(reclaimRow("build cache", d.BuildCacheSize, d.BuildCacheReclaim) + "\n")
+	disk.WriteString(lipgloss.NewStyle().Foreground(t.Warn).Bold(true).
+		Render("[p] prune → ~"+HumanBytes(uint64(d.TotalReclaim()))+" reclaimable") +
+		dim.Render("  (docker system prune)"))
+	diskBox := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
+		Padding(0, 1).Width(w - 4).Render(disk.String())
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(t.Border).
-		Padding(1, 3).
-		Render(body.String())
+	keys := dim.Render("keys  tab/1-5 switch · c settings · q quit · (containers) v cards/table · enter focus · e shell · S/X/R compose")
 
-	w := m.width
-	h := m.height
-	if w > 0 && h > 0 {
-		tabH := lipgloss.Height(m.tabBar())
-		remaining := h - tabH
-		if remaining < 1 {
-			remaining = 1
-		}
-		return m.tabBar() + "\n" + lipgloss.Place(w, remaining, lipgloss.Center, lipgloss.Center, box)
-	}
-	return m.tabBar() + "\n" + box
+	return m.padToHeight(tab + "\n" + banner + "\n" + tagline + "\n\n" + cols + "\n" + diskBox + "\n" + keys)
 }
 
 func (m *Model) groupHeader(g groupLike) string {

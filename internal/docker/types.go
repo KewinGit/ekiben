@@ -90,6 +90,21 @@ type InspectInfo struct {
 	HealthReason  string // last healthcheck output, if any
 }
 
+// SystemInfo is a subset of `docker info` shown in the Info tab.
+type SystemInfo struct {
+	Name              string
+	ServerVersion     string
+	OperatingSystem   string
+	Architecture      string
+	KernelVersion     string
+	StorageDriver     string
+	NCPU              int
+	MemTotal          int64
+	ContainersRunning int
+	ContainersStopped int
+	Images            int
+}
+
 // DiskUsageInfo summarizes `docker system df`: total and reclaimable bytes per
 // category (reclaimable ≈ what `docker system prune` would free).
 type DiskUsageInfo struct {
