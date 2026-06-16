@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-func TestLogsViewShowsContent(t *testing.T) {
+func TestFocusViewShowsLogs(t *testing.T) {
 	m := newTestModel()
-	m.mode = viewLogs
-	m.Update(logsMsg{id: "1", content: "alpha\nbeta\n"})
+	m.openFocus()
+	m.Update(focusLogsMsg{id: m.SelectedID(), content: "alpha\nbeta\n"})
 	out := m.View()
 	if !strings.Contains(out, "alpha") || !strings.Contains(out, "beta") {
-		t.Fatalf("logs view missing content:\n%s", out)
+		t.Fatalf("focus view missing log content:\n%s", out)
 	}
 }
 

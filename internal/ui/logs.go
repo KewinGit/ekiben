@@ -1,24 +1,11 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
-	"time"
 
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-// logsTickMsg is sent by logsTickCmd to drive the follow loop.
-type logsTickMsg struct{}
-
-// logsTickCmd schedules a logsTickMsg after 1 second.
-func (m *Model) logsTickCmd() tea.Cmd {
-	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
-		return logsTickMsg{}
-	})
-}
 
 // filterLines returns only the lines in content that contain query
 // (case-insensitive). If query is empty, content is returned unchanged.
@@ -36,17 +23,6 @@ func filterLines(content, query string) string {
 	return strings.Join(out, "\n")
 }
 
-func (m *Model) handleLogsMsg(msg logsMsg) {
-	if !m.logsReady {
-		m.logsVP = viewport.New(m.width, m.height-3)
-		m.logsReady = true
-	}
-	m.logsID = msg.id
-	m.logsRaw = msg.content
-	m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
-	m.logsVP.GotoBottom()
-}
-
 // setLogsContent word-wraps the content to the viewport width so long log lines
 // always wrap instead of being cut off, then sets it on the viewport.
 func (m *Model) setLogsContent(s string) {
@@ -59,40 +35,9 @@ func (m *Model) setLogsContent(s string) {
 	m.logsVP.SetContent(lipgloss.NewStyle().Width(w).Render(s))
 }
 
-// updateLogs handles key input while in logs mode (scroll only).
+// updateLogs forwards a key to the logs viewport (scrolling) and returns its cmd.
 func (m *Model) updateLogs(k tea.KeyMsg) tea.Cmd {
 	var cmd tea.Cmd
 	m.logsVP, cmd = m.logsVP.Update(k)
 	return cmd
-}
-
-func (m *Model) viewLogs() string {
-	t := m.theme
-	head := lipgloss.NewStyle().Foreground(t.Header).Bold(true).
-		Render(fmt.Sprintf("logs: %s", m.logsID))
-
-	var statusParts []string
-	if m.logsFollow {
-		statusParts = append(statusParts, "follow ON")
-	} else {
-		statusParts = append(statusParts, "follow OFF")
-	}
-	if m.logsSearching {
-		statusParts = append(statusParts, fmt.Sprintf("search: %s_", m.logsQuery))
-	} else if m.logsQuery != "" {
-		statusParts = append(statusParts, fmt.Sprintf("filter: %s", m.logsQuery))
-	}
-	status := ""
-	if len(statusParts) > 0 {
-		status = "  [" + strings.Join(statusParts, "  ") + "]"
-	}
-
-	help := lipgloss.NewStyle().Foreground(t.Dim).
-		Render("[↑↓] scroll  [PgUp/PgDn] page  [g/G] top/bottom  [f] follow  [/] search  [esc] back" + status)
-
-	content := ""
-	if m.logsReady {
-		content = m.logsVP.View()
-	}
-	return head + "\n" + content + "\n" + help
 }

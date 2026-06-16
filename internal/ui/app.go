@@ -43,7 +43,6 @@ type viewMode int
 const (
 	viewGrid viewMode = iota
 	viewFocus
-	viewLogs
 	viewSettings
 )
 
@@ -243,14 +242,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastErr = msg.err
 		}
 		return m, m.refreshCmd()
-	case logsMsg:
-		m.handleLogsMsg(msg)
-		return m, nil
-	case logsTickMsg:
-		if m.logsFollow && m.mode == viewLogs {
-			return m, tea.Batch(m.loadLogsCmd(), m.logsTickCmd())
-		}
-		return m, nil
 	case focusLogsMsg:
 		if msg.id == m.SelectedID() {
 			m.logsRaw = msg.content

@@ -43,8 +43,6 @@ func (m *Model) viewCurrent() string {
 	switch m.mode {
 	case viewFocus:
 		return m.viewFocus()
-	case viewLogs:
-		return m.viewLogs()
 	case viewSettings:
 		return m.viewSettings()
 	default:
