@@ -445,7 +445,7 @@ func (m *Model) viewImages() string {
 			}
 		}
 	}
-	listH, detailH := splitListDetail(avail, len(det))
+	listH, detailH := splitListDetail(avail, len(m.images), len(det))
 
 	var totalSize int64
 	for _, img := range m.images {
@@ -478,27 +478,40 @@ func (m *Model) viewImages() string {
 		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
 	hint := dim.Render("  ↑↓/click select · d delete · tab/1-5 switch tab")
-	return tab + "\n" + listPanel + "\n" + hint + "\n" + detailPanel
+	return m.padToHeight(tab + "\n" + listPanel + "\n" + hint + "\n" + detailPanel)
 }
 
-// splitListDetail sizes the list/detail panels: the detail takes only the space
-// its content needs (clamped), and the list gets all the rest.
-func splitListDetail(avail, detailLines int) (listH, detailH int) {
-	detailH = detailLines + 2 // border
-	if detailH < 4 {
-		detailH = 4
-	}
-	if detailH > avail-5 { // always leave room for the list
-		detailH = avail - 5
-	}
+// splitListDetail sizes the list/detail panels to their content. Both grow only
+// as much as they need; if the list would overflow it's capped (and scrolls).
+// Any leftover screen below is left empty by the caller.
+func splitListDetail(avail, listItems, detailLines int) (listH, detailH int) {
+	detailH = detailLines + 2 // content + border
 	if detailH < 3 {
 		detailH = 3
 	}
-	listH = avail - 1 - detailH // -1 for the hint line
+	if detailH > avail-4 {
+		detailH = avail - 4
+	}
+	listH = listItems + 3 // items + header + border
+	if maxList := avail - 1 - detailH; listH > maxList {
+		listH = maxList // overflow → the list scrolls
+	}
 	if listH < 3 {
 		listH = 3
 	}
 	return listH, detailH
+}
+
+// padToHeight pads s with blank lines so it fills the terminal height (leaving
+// the bottom empty instead of showing stale content).
+func (m *Model) padToHeight(s string) string {
+	if m.height <= 0 {
+		return s
+	}
+	if h := lipgloss.Height(s); h < m.height {
+		return s + strings.Repeat("\n", m.height-h)
+	}
+	return s
 }
 
 // viewVolumes renders the volumes listing panel.
@@ -535,7 +548,7 @@ func (m *Model) viewVolumes() string {
 			}
 		}
 	}
-	listH, detailH := splitListDetail(avail, len(det))
+	listH, detailH := splitListDetail(avail, len(m.volumes), len(det))
 
 	var totalSize int64
 	for _, v := range m.volumes {
@@ -564,7 +577,7 @@ func (m *Model) viewVolumes() string {
 		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
 	hint := dim.Render("  ↑↓/click select · d delete · tab/1-5 switch tab")
-	return tab + "\n" + listPanel + "\n" + hint + "\n" + detailPanel
+	return m.padToHeight(tab + "\n" + listPanel + "\n" + hint + "\n" + detailPanel)
 }
 
 // viewNetworks renders a selectable network list + the containers in the selection.
@@ -600,7 +613,7 @@ func (m *Model) viewNetworks() string {
 			}
 		}
 	}
-	listH, detailH := splitListDetail(avail, len(det))
+	listH, detailH := splitListDetail(avail, len(m.networks), len(det))
 
 	rows := []string{bold.Render(fmt.Sprintf("  %-24s %-9s %-6s %-14s %s", "NAME", "DRIVER", "SCOPE", "ID", "STATUS")) +
 		dim.Render(fmt.Sprintf("   (%d)", len(m.networks)))}
@@ -630,7 +643,7 @@ func (m *Model) viewNetworks() string {
 		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
 	hint := dim.Render("  ↑↓/click select · d delete · tab/1-5 switch tab")
-	return tab + "\n" + listPanel + "\n" + hint + "\n" + detailPanel
+	return m.padToHeight(tab + "\n" + listPanel + "\n" + hint + "\n" + detailPanel)
 }
 
 // viewInfo renders program info (moved from settings Info tab).
