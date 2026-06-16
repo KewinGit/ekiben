@@ -66,11 +66,12 @@ type Model struct {
 	theme   Theme
 	eventCh <-chan docker.Event
 
-	groups   []model.Group
-	stats    map[string]docker.Stats
-	history  map[string]*model.RingBuffer
-	order    []string // flattened visible container IDs, in display order
-	selected int      // index into order
+	groups     []model.Group
+	stats      map[string]docker.Stats
+	history    map[string]*model.RingBuffer
+	memHistory map[string]*model.RingBuffer
+	order      []string // flattened visible container IDs, in display order
+	selected   int      // index into order
 
 	collapsed    map[string]bool
 	cols         int
@@ -95,9 +96,9 @@ type Model struct {
 	confirmID  string
 
 	// focus view live logs
-	focusLogs string
+	focusInit bool // pending initial scroll-to-bottom after opening focus
 
-	// logs view
+	// logs view (viewport reused by the focus detail view)
 	logsVP        viewport.Model
 	logsID        string
 	logsReady     bool
@@ -123,12 +124,13 @@ type Model struct {
 
 func New(client docker.Client, cfg config.Config) *Model {
 	return &Model{
-		client:    client,
-		cfg:       cfg,
-		theme:     ThemeByName(cfg.Theme),
-		stats:     map[string]docker.Stats{},
-		history:   map[string]*model.RingBuffer{},
-		collapsed: cloneBoolMap(cfg.GroupCollapsed),
+		client:     client,
+		cfg:        cfg,
+		theme:      ThemeByName(cfg.Theme),
+		stats:      map[string]docker.Stats{},
+		history:    map[string]*model.RingBuffer{},
+		memHistory: map[string]*model.RingBuffer{},
+		collapsed:  cloneBoolMap(cfg.GroupCollapsed),
 	}
 }
 
@@ -251,11 +253,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case focusLogsMsg:
 		if msg.id == m.SelectedID() {
-			m.focusLogs = msg.content
+			m.logsRaw = msg.content
+			if !m.logsReady {
+				m.logsVP = viewport.New(m.width, 10)
+				m.logsReady = true
+			}
+			m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
+			if m.focusInit {
+				m.logsVP.GotoBottom()
+				m.focusInit = false
+			} else if m.logsFollow {
+				m.logsVP.GotoBottom()
+			}
 		}
 		return m, nil
 	case focusTickMsg:
-		if m.mode == viewFocus {
+		if m.mode == viewFocus && m.logsFollow {
 			return m, tea.Batch(m.loadFocusLogsCmd(), m.focusTickCmd())
 		}
 		return m, nil
@@ -276,59 +289,18 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if k.Type == tea.KeyCtrlC {
 		return m, tea.Quit
 	}
-	if k.String() == "q" && !(m.mode == viewLogs && m.logsSearching) {
+	if k.String() == "q" && !(m.mode == viewFocus && m.logsSearching) {
 		return m, tea.Quit
 	}
-	if m.mode != viewGrid {
+	if m.mode == viewSettings {
 		if k.String() == "esc" {
 			m.mode = viewGrid
-			m.focusInspect = false
 			return m, nil
 		}
-	}
-	if m.mode == viewSettings {
 		return m, m.updateSettings(k)
 	}
-	if m.mode == viewLogs {
-		if m.logsSearching {
-			switch k.Type {
-			case tea.KeyEsc, tea.KeyEnter:
-				m.logsSearching = false
-			case tea.KeyBackspace, tea.KeyDelete:
-				if len(m.logsQuery) > 0 {
-					runes := []rune(m.logsQuery)
-					m.logsQuery = string(runes[:len(runes)-1])
-				}
-			case tea.KeyRunes:
-				m.logsQuery += k.String()
-			}
-			if m.logsReady {
-				m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
-			}
-			return m, nil
-		}
-		switch k.String() {
-		case "esc":
-			m.mode = viewGrid
-			m.logsFollow = false
-			m.logsSearching = false
-			m.logsQuery = ""
-			return m, nil
-		case "/":
-			m.logsSearching = true
-			m.logsQuery = ""
-			if m.logsReady {
-				m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
-			}
-			return m, nil
-		case "f":
-			m.logsFollow = !m.logsFollow
-			if m.logsFollow {
-				return m, tea.Batch(m.loadLogsCmd(), m.logsTickCmd())
-			}
-			return m, nil
-		}
-		return m, m.updateLogs(k)
+	if m.mode == viewFocus {
+		return m.handleFocusKey(k)
 	}
 	// Home tab switching — active in all grid sub-tabs
 	switch k.String() {
@@ -384,23 +356,81 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.requestAction("start")
 	case "u":
 		return m, m.requestAction("unpause")
-	case "enter":
-		m.focusLogs = ""
-		m.mode = viewFocus
-		return m, tea.Batch(m.loadFocusLogsCmd(), m.focusTickCmd())
-	case "l":
-		m.mode = viewLogs
+	case "enter", "l":
+		m.openFocus()
+		return m, m.loadFocusLogsCmd()
+	case "i":
+		m.openFocus()
+		m.focusInspect = true
+		return m, m.loadFocusLogsCmd()
+	}
+	return m, nil
+}
+
+// openFocus enters the detail view for the selected container, resetting log state.
+func (m *Model) openFocus() {
+	m.mode = viewFocus
+	m.logsFollow = false
+	m.logsSearching = false
+	m.logsQuery = ""
+	m.focusInspect = false
+	m.focusInit = true
+}
+
+// handleFocusKey handles keys in the detail view (log scroll/follow/search + actions).
+func (m *Model) handleFocusKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.logsSearching {
+		switch k.Type {
+		case tea.KeyEsc, tea.KeyEnter:
+			m.logsSearching = false
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(m.logsQuery) > 0 {
+				r := []rune(m.logsQuery)
+				m.logsQuery = string(r[:len(r)-1])
+			}
+		case tea.KeyRunes:
+			m.logsQuery += k.String()
+		}
+		if m.logsReady {
+			m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
+		}
+		return m, nil
+	}
+	switch k.String() {
+	case "esc":
+		m.mode = viewGrid
 		m.logsFollow = false
 		m.logsSearching = false
 		m.logsQuery = ""
-		return m, m.loadLogsCmd()
-	case "i":
-		m.focusLogs = ""
-		m.mode = viewFocus
-		m.focusInspect = true
-		return m, tea.Batch(m.loadFocusLogsCmd(), m.focusTickCmd())
+		m.focusInspect = false
+		return m, nil
+	case "/":
+		m.logsSearching = true
+		m.logsQuery = ""
+		if m.logsReady {
+			m.setLogsContent(filterLines(m.logsRaw, m.logsQuery))
+		}
+		return m, nil
+	case "f":
+		m.logsFollow = !m.logsFollow
+		if m.logsFollow {
+			return m, tea.Batch(m.loadFocusLogsCmd(), m.focusTickCmd())
+		}
+		return m, nil
+	case "s":
+		return m, m.requestAction("stop")
+	case "r":
+		return m, m.requestAction("restart")
+	case "p":
+		return m, m.requestAction("pause")
+	case "a":
+		return m, m.requestAction("start")
+	case "u":
+		return m, m.requestAction("unpause")
+	case "d":
+		return m, m.requestAction("delete")
 	}
-	return m, nil
+	return m, m.updateLogs(k)
 }
 
 // homeTabSwitchCmd returns a load cmd when switching to Images, Volumes, or Networks tabs.

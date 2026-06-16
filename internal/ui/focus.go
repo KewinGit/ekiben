@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/KewinGit/ekiben/internal/docker"
+	"github.com/KewinGit/ekiben/internal/model"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 func (m *Model) selectedContainer() (docker.Container, bool) {
@@ -21,6 +21,13 @@ func (m *Model) selectedContainer() (docker.Container, bool) {
 	return docker.Container{}, false
 }
 
+func histValues(rb *model.RingBuffer) []float64 {
+	if rb == nil {
+		return nil
+	}
+	return rb.Values()
+}
+
 func (m *Model) viewFocus() string {
 	c, ok := m.selectedContainer()
 	if !ok {
@@ -28,54 +35,58 @@ func (m *Model) viewFocus() string {
 	}
 	st := m.stats[c.ID]
 	t := m.theme
-	title := lipgloss.NewStyle().Foreground(t.Header).Bold(true).
-		Render(fmt.Sprintf("%s — %s", c.Name, c.Project))
+	lbl := lipgloss.NewStyle().Foreground(t.Label)
+	dim := lipgloss.NewStyle().Foreground(t.Dim)
 
-	hist := []float64{}
-	if rb := m.history[c.ID]; rb != nil {
-		hist = rb.Values()
+	memPct := 0.0
+	if st.MemLimit > 0 {
+		memPct = float64(st.MemUsage) / float64(st.MemLimit) * 100
 	}
 
-	var b strings.Builder
-	b.WriteString(title + "\n\n")
-	b.WriteString(statusLine(CardInput{Container: c, Theme: t}, t) + "  " +
-		lipgloss.NewStyle().Foreground(t.Dim).Render(c.Image) + "\n")
-	b.WriteString(fmt.Sprintf("cpu  %s  %.1f%%\n", Sparkline(hist, 100), st.CPUPerc))
-	b.WriteString(fmt.Sprintf("mem  %s / %s\n", HumanBytes(st.MemUsage), HumanBytes(st.MemLimit)))
-	b.WriteString(fmt.Sprintf("net  ↓%s ↑%s\n", HumanBytes(st.NetRx), HumanBytes(st.NetTx)))
+	// --- info section (top) ---
+	var info strings.Builder
+	info.WriteString(lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render(c.Name) +
+		dim.Render("  "+c.Project) + "\n")
+	statusln := statusLine(CardInput{Container: c, Theme: t}, t)
+	if up := uptimeStr(c); up != "" {
+		statusln += dim.Render(" · up " + up)
+	}
+	info.WriteString(statusln + dim.Render("  "+c.Image) + "\n")
+	info.WriteString(fmt.Sprintf("%s %s %6.1f%%\n", lbl.Render("cpu"), Sparkline(histValues(m.history[c.ID]), 100), st.CPUPerc))
+	info.WriteString(fmt.Sprintf("%s %s %s %5.1f%%\n", lbl.Render("mem"), Sparkline(histValues(m.memHistory[c.ID]), 100), HumanBytes(st.MemUsage), memPct))
+	info.WriteString(fmt.Sprintf("%s ↓%s ↑%s", lbl.Render("net"), HumanBytes(st.NetRx), HumanBytes(st.NetTx)))
 	if len(c.Ports) > 0 {
-		b.WriteString("port " + strings.Join(c.Ports, " ") + "\n")
+		info.WriteString("   " + lbl.Render("port") + " " +
+			lipgloss.NewStyle().Foreground(t.Accent).Render(strings.Join(c.Ports, " ")))
 	}
+	infoStr := info.String()
+	infoH := lipgloss.Height(infoStr)
 
-	// --- live log tail ---
-	b.WriteString("\n")
-	logLabel := lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render("logs")
-	b.WriteString(logLabel + "\n")
-	dimStyle := lipgloss.NewStyle().Foreground(t.Dim)
-	viewW := m.width
-	if viewW < 1 {
-		viewW = 80
+	// --- logs section (bottom, scrollable) ---
+	status := ""
+	if m.logsFollow {
+		status += "  follow ON"
 	}
-	if m.focusLogs == "" {
-		b.WriteString(dimStyle.Render("  (loading…)") + "\n")
+	if m.logsSearching {
+		status += fmt.Sprintf("  search: %s_", m.logsQuery)
+	} else if m.logsQuery != "" {
+		status += fmt.Sprintf("  filter: %s", m.logsQuery)
+	}
+	logsHead := lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render("logs") + dim.Render(status)
+	help := dim.Render("[↑↓ PgUp/PgDn g/G] scroll  [f] follow  [/] search  [s r p a u d] actions  [esc] back")
+
+	logsH := m.height - infoH - 3 // -3: logs header, help, separator
+	if logsH < 3 {
+		logsH = 3
+	}
+	var logsView string
+	if m.logsReady {
+		m.logsVP.Width = m.width
+		m.logsVP.Height = logsH
+		logsView = m.logsVP.View()
 	} else {
-		allLines := strings.Split(m.focusLogs, "\n")
-		// take last 10 lines
-		start := len(allLines) - 10
-		if start < 0 {
-			start = 0
-		}
-		tailLines := allLines[start:]
-		for _, l := range tailLines {
-			if l == "" {
-				continue
-			}
-			truncated := ansi.Truncate(l, viewW-2, "")
-			b.WriteString(dimStyle.Render("  "+truncated) + "\n")
-		}
+		logsView = dim.Render("(loading…)")
 	}
 
-	b.WriteString("\n" + lipgloss.NewStyle().Foreground(t.Dim).Render(
-		"[esc] back  [l] logs  [s] stop  [r] restart  [a] start  [u] unpause"))
-	return b.String()
+	return infoStr + "\n" + logsHead + "\n" + logsView + "\n" + help
 }

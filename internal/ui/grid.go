@@ -28,6 +28,14 @@ func (m *Model) ingestStats(s statsMsg) {
 			m.history[id] = newHistory()
 		}
 		m.history[id].Push(st.CPUPerc)
+		if m.memHistory[id] == nil {
+			m.memHistory[id] = newHistory()
+		}
+		memPct := 0.0
+		if st.MemLimit > 0 {
+			memPct = float64(st.MemUsage) / float64(st.MemLimit) * 100
+		}
+		m.memHistory[id].Push(memPct)
 	}
 }
 

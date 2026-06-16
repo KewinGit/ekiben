@@ -140,12 +140,12 @@ type focusLogsMsg struct {
 // focusTickMsg drives the focus-view log refresh loop.
 type focusTickMsg struct{}
 
-// loadFocusLogsCmd fetches the last ~50 log lines for the selected container.
+// loadFocusLogsCmd fetches the recent log lines for the detail view.
 func (m *Model) loadFocusLogsCmd() tea.Cmd {
 	client := m.client
 	id := m.SelectedID()
 	return func() tea.Msg {
-		rc, err := client.Logs(context.Background(), id, false, 50)
+		rc, err := client.Logs(context.Background(), id, false, 2000)
 		if err != nil {
 			return focusLogsMsg{id: id, content: ""}
 		}
