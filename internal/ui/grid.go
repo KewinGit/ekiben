@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/KewinGit/ekiben/internal/config"
@@ -11,6 +12,54 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
+
+// windowSlice returns [start,end) of length<=height centered on sel.
+func windowSlice(n, sel, height int) (int, int) {
+	if height < 1 {
+		height = 1
+	}
+	if n <= height {
+		return 0, n
+	}
+	start := sel - height/2
+	if start < 0 {
+		start = 0
+	}
+	if start > n-height {
+		start = n - height
+	}
+	return start, start + height
+}
+
+// containersInNetwork returns the names of containers attached to a network.
+func (m *Model) containersInNetwork(name string) []string {
+	var out []string
+	for _, c := range m.lastContainers {
+		for _, n := range c.Networks {
+			if n == name {
+				out = append(out, c.Name)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// containersUsingVolume returns the names of containers mounting a volume.
+func (m *Model) containersUsingVolume(name string) []string {
+	var out []string
+	for _, c := range m.lastContainers {
+		for _, mt := range c.Mounts {
+			if mt == name {
+				out = append(out, c.Name)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 // --- messages produced by background commands (filled in Task 16) ---
 
@@ -407,113 +456,127 @@ func (m *Model) viewImages() string {
 
 // viewVolumes renders the volumes listing panel.
 func (m *Model) viewVolumes() string {
+	t := m.theme
 	w := m.width
 	if w < 1 {
 		w = 80
 	}
-	availH := m.height - lipgloss.Height(m.tabBar()) - 4
-	if availH < 1 {
-		availH = 1
+	tab := m.tabBar()
+	avail := m.height - lipgloss.Height(tab) - 1
+	if avail < 8 {
+		avail = 8
 	}
+	listH := avail/2 + 1
+	detailH := avail - listH
 
-	var lines []string
-	hdr := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(
-		fmt.Sprintf("%-30s  %-10s  %8s  %s", "NAME", "DRIVER", "SIZE", "MOUNTPOINT"))
-	lines = append(lines, hdr)
-
-	mountW := w - 58 // leave room for name+driver+size columns + borders
-	if mountW < 20 {
-		mountW = 20
+	if m.volSel >= len(m.volumes) {
+		m.volSel = max(0, len(m.volumes)-1)
 	}
+	bold := lipgloss.NewStyle().Foreground(t.Header).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(t.Dim)
+	accent := lipgloss.NewStyle().Foreground(t.Accent)
+
+	// list panel
 	var totalSize int64
-	for _, vol := range m.volumes {
-		totalSize += vol.Size
-		mp := ansi.Truncate(vol.Mountpoint, mountW, "…")
-		line := fmt.Sprintf("%-30s  %-10s  %8s  %s",
-			vol.Name, vol.Driver, HumanBytes(uint64(vol.Size)), mp)
-		lines = append(lines, line)
+	for _, v := range m.volumes {
+		totalSize += v.Size
 	}
+	rows := []string{bold.Render(fmt.Sprintf("  %-32s %-8s %8s", "NAME", "DRIVER", "SIZE")) +
+		dim.Render(fmt.Sprintf("   (%d volumes, %s total)", len(m.volumes), HumanBytes(uint64(totalSize))))}
+	innerH := listH - 3
+	start, end := windowSlice(len(m.volumes), m.volSel, innerH)
+	for i := start; i < end; i++ {
+		v := m.volumes[i]
+		cursor := "  "
+		if i == m.volSel {
+			cursor = accent.Render("► ")
+		}
+		rows = append(rows, cursor+fmt.Sprintf("%-32s %-8s %8s",
+			ansi.Truncate(v.Name, 32, "…"), ansi.Truncate(v.Driver, 8, "…"), HumanBytes(uint64(v.Size))))
+	}
+	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
+		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
 
-	totalLine := lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
-		fmt.Sprintf("TOTAL  %s", HumanBytes(uint64(totalSize))))
+	// detail panel: containers using the selected volume
+	var det []string
+	if len(m.volumes) > 0 {
+		v := m.volumes[m.volSel]
+		det = append(det, bold.Render("containers using ")+accent.Render(v.Name))
+		det = append(det, dim.Render(ansi.Truncate(v.Mountpoint, w-6, "…")))
+		cs := m.containersUsingVolume(v.Name)
+		if len(cs) == 0 {
+			det = append(det, dim.Render("  (none)"))
+		} else {
+			for _, n := range cs {
+				det = append(det, "  "+n)
+			}
+		}
+	}
+	detailPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
+		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
-	truncated := 0
-	maxContent := availH - 1
-	if maxContent < 1 {
-		maxContent = 1
-	}
-	if len(lines) > maxContent {
-		truncated = len(lines) - maxContent
-		lines = lines[:maxContent]
-	}
-	if truncated > 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
-			fmt.Sprintf("… (+%d more)", truncated)))
-	}
-	lines = append(lines, totalLine)
-
-	contentW := w - 4
-	if contentW < 20 {
-		contentW = 20
-	}
-	panel := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.theme.Border).
-		Width(contentW).
-		Render(strings.Join(lines, "\n"))
-
-	return m.tabBar() + "\n" + panel
+	return tab + "\n" + listPanel + "\n" + detailPanel
 }
 
-// viewNetworks renders the networks listing panel.
+// viewNetworks renders a selectable network list + the containers in the selection.
 func (m *Model) viewNetworks() string {
+	t := m.theme
 	w := m.width
 	if w < 1 {
 		w = 80
 	}
-	availH := m.height - lipgloss.Height(m.tabBar()) - 4
-	if availH < 1 {
-		availH = 1
+	tab := m.tabBar()
+	avail := m.height - lipgloss.Height(tab) - 1
+	if avail < 8 {
+		avail = 8
 	}
+	listH := avail/2 + 1
+	detailH := avail - listH
 
-	var lines []string
-	hdr := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(
-		fmt.Sprintf("%-30s  %-10s  %-10s  %s", "NAME", "DRIVER", "SCOPE", "ID"))
-	lines = append(lines, hdr)
+	if m.netSel >= len(m.networks) {
+		m.netSel = max(0, len(m.networks)-1)
+	}
+	bold := lipgloss.NewStyle().Foreground(t.Header).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(t.Dim)
+	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
-	for _, net := range m.networks {
-		name := ansi.Truncate(net.Name, 30, "…")
-		driver := ansi.Truncate(net.Driver, 10, "…")
-		scope := ansi.Truncate(net.Scope, 10, "…")
+	rows := []string{bold.Render(fmt.Sprintf("  %-28s %-10s %-8s %s", "NAME", "DRIVER", "SCOPE", "ID")) +
+		dim.Render(fmt.Sprintf("   (%d networks)", len(m.networks)))}
+	innerH := listH - 3
+	start, end := windowSlice(len(m.networks), m.netSel, innerH)
+	for i := start; i < end; i++ {
+		net := m.networks[i]
+		cursor := "  "
+		if i == m.netSel {
+			cursor = accent.Render("► ")
+		}
 		id := net.ID
 		if len(id) > 12 {
 			id = id[:12]
 		}
-		line := fmt.Sprintf("%-30s  %-10s  %-10s  %s", name, driver, scope, id)
-		lines = append(lines, line)
+		rows = append(rows, cursor+fmt.Sprintf("%-28s %-10s %-8s %s",
+			ansi.Truncate(net.Name, 28, "…"), ansi.Truncate(net.Driver, 10, "…"), ansi.Truncate(net.Scope, 8, "…"), id))
 	}
+	listPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
+		Width(w - 2).Height(listH - 2).Render(strings.Join(rows, "\n"))
 
-	truncated := 0
-	if len(lines) > availH {
-		truncated = len(lines) - availH
-		lines = lines[:availH]
+	var det []string
+	if len(m.networks) > 0 {
+		net := m.networks[m.netSel]
+		det = append(det, bold.Render("containers in ")+accent.Render(net.Name))
+		cs := m.containersInNetwork(net.Name)
+		if len(cs) == 0 {
+			det = append(det, dim.Render("  (none)"))
+		} else {
+			for _, n := range cs {
+				det = append(det, "  "+n)
+			}
+		}
 	}
-	if truncated > 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
-			fmt.Sprintf("… (+%d more)", truncated)))
-	}
+	detailPanel := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).
+		Width(w - 2).Height(detailH - 2).Render(strings.Join(det, "\n"))
 
-	contentW := w - 4
-	if contentW < 20 {
-		contentW = 20
-	}
-	panel := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.theme.Border).
-		Width(contentW).
-		Render(strings.Join(lines, "\n"))
-
-	return m.tabBar() + "\n" + panel
+	return tab + "\n" + listPanel + "\n" + detailPanel
 }
 
 // viewInfo renders program info (moved from settings Info tab).

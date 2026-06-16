@@ -118,6 +118,8 @@ type Model struct {
 	images   []docker.Image
 	volumes  []docker.Volume
 	networks []docker.Network
+	netSel   int // selected row in the Networks tab
+	volSel   int // selected row in the Volumes tab
 
 	lastErr error
 }
@@ -322,6 +324,34 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.mode = viewSettings
 		m.enterSettings()
+		return m, nil
+	}
+
+	// Networks / Volumes tabs: up/down move the list selection.
+	if m.homeTab == homeNetworks {
+		switch k.String() {
+		case "up", "k":
+			if m.netSel > 0 {
+				m.netSel--
+			}
+		case "down", "j":
+			if m.netSel < len(m.networks)-1 {
+				m.netSel++
+			}
+		}
+		return m, nil
+	}
+	if m.homeTab == homeVolumes {
+		switch k.String() {
+		case "up", "k":
+			if m.volSel > 0 {
+				m.volSel--
+			}
+		case "down", "j":
+			if m.volSel < len(m.volumes)-1 {
+				m.volSel++
+			}
+		}
 		return m, nil
 	}
 
