@@ -155,6 +155,25 @@ type focusLogsMsg struct {
 	content string
 }
 
+// focusInspectMsg carries inspect details for the detail view.
+type focusInspectMsg struct {
+	id   string
+	info docker.InspectInfo
+}
+
+// loadFocusInspectCmd inspects the selected container for the detail view.
+func (m *Model) loadFocusInspectCmd() tea.Cmd {
+	client := m.client
+	id := m.SelectedID()
+	return func() tea.Msg {
+		info, err := client.InspectInfo(context.Background(), id)
+		if err != nil {
+			return focusInspectMsg{id: id}
+		}
+		return focusInspectMsg{id: id, info: info}
+	}
+}
+
 // focusTickMsg drives the focus-view log refresh loop.
 type focusTickMsg struct{}
 

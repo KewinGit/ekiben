@@ -51,6 +51,47 @@ func histValues(rb *model.RingBuffer) []float64 {
 	return rb.Values()
 }
 
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// exitCodeHint translates a container exit code into a human hint.
+func exitCodeHint(code int) string {
+	switch code {
+	case 1:
+		return "1 (general error)"
+	case 126:
+		return "126 (not executable)"
+	case 127:
+		return "127 (command not found)"
+	case 137:
+		return "137 (SIGKILL — often OOM)"
+	case 139:
+		return "139 (SIGSEGV)"
+	case 143:
+		return "143 (SIGTERM)"
+	default:
+		return fmt.Sprintf("%d", code)
+	}
+}
+
+// countLogIssues counts log lines that look like errors / warnings.
+func countLogIssues(s string) (errs, warns int) {
+	for _, l := range strings.Split(s, "\n") {
+		ll := strings.ToLower(l)
+		switch {
+		case strings.Contains(ll, "error") || strings.Contains(ll, "fatal") || strings.Contains(ll, "panic"):
+			errs++
+		case strings.Contains(ll, "warn"):
+			warns++
+		}
+	}
+	return errs, warns
+}
+
 func (m *Model) viewFocus() string {
 	c, ok := m.selectedContainer()
 	if !ok {
@@ -105,7 +146,40 @@ func (m *Model) viewFocus() string {
 	if len(c.Mounts) > 0 {
 		vols = strings.Join(c.Mounts, " ")
 	}
-	info.WriteString(lbl.Render("vols ") + " " + trunc(vols))
+	info.WriteString(lbl.Render("vols ") + " " + trunc(vols) + "\n")
+
+	// reliability / inspect details
+	ii := m.focusInspectInfo
+	warn := lipgloss.NewStyle().Foreground(t.Warn)
+	prob := lipgloss.NewStyle().Foreground(t.Problem)
+	restartTxt := fmt.Sprintf("%d", ii.RestartCount)
+	if ii.RestartCount >= 5 {
+		restartTxt += warn.Render("  ⟳ crash-loop?")
+	}
+	if ii.RestartPolicy != "" {
+		restartTxt += dim.Render("   policy: " + ii.RestartPolicy)
+	}
+	info.WriteString(lbl.Render("restr") + " " + restartTxt + "\n")
+	var badges []string
+	if ii.OOMKilled {
+		badges = append(badges, prob.Render("⚠ OOMKilled"))
+	}
+	if !c.Running() && c.ExitCode != 0 {
+		badges = append(badges, prob.Render("exit "+exitCodeHint(c.ExitCode)))
+	}
+	if ii.Privileged {
+		badges = append(badges, warn.Render("⚠ privileged"))
+	}
+	if c.Health == docker.HealthUnhealthy && ii.HealthReason != "" {
+		badges = append(badges, prob.Render("health: ")+trunc(firstLine(ii.HealthReason)))
+	}
+	errs, warns := countLogIssues(m.logsRaw)
+	if errs > 0 || warns > 0 {
+		badges = append(badges, dim.Render(fmt.Sprintf("logs: %d err / %d warn", errs, warns)))
+	}
+	if len(badges) > 0 {
+		info.WriteString(lbl.Render("     ") + " " + trunc(strings.Join(badges, "   ")))
+	}
 
 	box := func(s string) string {
 		return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).

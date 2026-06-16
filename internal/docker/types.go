@@ -80,6 +80,16 @@ func (c Container) Problem() bool {
 	return c.Health == HealthUnhealthy
 }
 
+// InspectInfo holds the extra per-container details ekiben surfaces in the
+// detail view (fetched on demand via inspect).
+type InspectInfo struct {
+	RestartCount  int
+	OOMKilled     bool
+	Privileged    bool
+	RestartPolicy string
+	HealthReason  string // last healthcheck output, if any
+}
+
 // Stats is a single sample of live container metrics.
 type Stats struct {
 	ID       string

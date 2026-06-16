@@ -58,6 +58,10 @@ func (f *Fake) Logs(_ context.Context, _ string, _ bool, _ int) (io.ReadCloser, 
 
 func (f *Fake) Inspect(_ context.Context, _ string) (string, error) { return "{}", nil }
 
+func (f *Fake) InspectInfo(_ context.Context, _ string) (InspectInfo, error) {
+	return InspectInfo{}, nil
+}
+
 func (f *Fake) setStatus(id string, s Status) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

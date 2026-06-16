@@ -225,6 +225,25 @@ func (s *SDK) Inspect(ctx context.Context, id string) (string, error) {
 	return string(b), err
 }
 
+func (s *SDK) InspectInfo(ctx context.Context, id string) (InspectInfo, error) {
+	raw, err := s.cli.ContainerInspect(ctx, id)
+	if err != nil {
+		return InspectInfo{}, err
+	}
+	info := InspectInfo{RestartCount: raw.RestartCount}
+	if raw.State != nil {
+		info.OOMKilled = raw.State.OOMKilled
+		if raw.State.Health != nil && len(raw.State.Health.Log) > 0 {
+			info.HealthReason = strings.TrimSpace(raw.State.Health.Log[len(raw.State.Health.Log)-1].Output)
+		}
+	}
+	if raw.HostConfig != nil {
+		info.Privileged = raw.HostConfig.Privileged
+		info.RestartPolicy = string(raw.HostConfig.RestartPolicy.Name)
+	}
+	return info, nil
+}
+
 func (s *SDK) Start(ctx context.Context, id string) error {
 	return s.cli.ContainerStart(ctx, id, container.StartOptions{})
 }

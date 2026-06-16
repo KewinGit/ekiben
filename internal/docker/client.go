@@ -12,6 +12,7 @@ type Client interface {
 	Events(ctx context.Context) (<-chan Event, <-chan error)
 	Logs(ctx context.Context, id string, follow bool, tail int) (io.ReadCloser, error)
 	Inspect(ctx context.Context, id string) (string, error) // pretty JSON
+	InspectInfo(ctx context.Context, id string) (InspectInfo, error)
 
 	Images(ctx context.Context) ([]Image, error)
 	Volumes(ctx context.Context) ([]Volume, error)

@@ -94,12 +94,11 @@ type Model struct {
 	order      []string // flattened visible container IDs, in display order
 	selected   int      // index into order
 
-	collapsed    map[string]bool
-	cols         int
-	width        int
-	height       int
-	mode         viewMode
-	focusInspect bool
+	collapsed map[string]bool
+	cols      int
+	width     int
+	height    int
+	mode      viewMode
 
 	// scrollable grid state
 	scrollY      int         // vertical scroll offset in body lines
@@ -115,7 +114,8 @@ type Model struct {
 	modal modalState
 
 	// focus view live logs
-	focusInit bool // pending initial scroll-to-bottom after opening focus
+	focusInit        bool // pending initial scroll-to-bottom after opening focus
+	focusInspectInfo docker.InspectInfo
 
 	// logs view (viewport reused by the focus detail view)
 	logsVP         viewport.Model
@@ -275,8 +275,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// reload everything: an action may have changed containers/images/volumes/networks
 		return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
 	case execDoneMsg:
-		// exec/compose finished and the terminal is restored; reload everything
-		return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
+		// exec/compose released the terminal: re-enable mouse reporting and reload.
+		return m, tea.Batch(tea.EnableMouseCellMotion,
+			m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
 	case composeUpAfterDownMsg:
 		return m, m.composeUpCmd(composeRef(msg))
 	case focusLogsMsg:
@@ -295,6 +296,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.logsFollow {
 				m.logsVP.GotoBottom()
 			}
+		}
+		return m, nil
+	case focusInspectMsg:
+		if msg.id == m.SelectedID() {
+			m.focusInspectInfo = msg.info
 		}
 		return m, nil
 	case focusTickMsg:
@@ -418,13 +424,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.requestCompose("down")
 	case "R":
 		return m, m.requestCompose("restart")
-	case "enter", "l":
+	case "enter", "l", "i":
 		m.openFocus()
-		return m, m.loadFocusLogsCmd()
-	case "i":
-		m.openFocus()
-		m.focusInspect = true
-		return m, m.loadFocusLogsCmd()
+		return m, tea.Batch(m.loadFocusLogsCmd(), m.loadFocusInspectCmd())
 	}
 	return m, nil
 }
@@ -468,7 +470,7 @@ func (m *Model) openFocus() {
 	m.logsFollow = false
 	m.logsSearching = false
 	m.logsQuery = ""
-	m.focusInspect = false
+	m.focusInspectInfo = docker.InspectInfo{}
 	m.focusInit = true
 }
 
@@ -497,7 +499,6 @@ func (m *Model) handleFocusKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.logsFollow = false
 		m.logsSearching = false
 		m.logsQuery = ""
-		m.focusInspect = false
 		return m, nil
 	case "/":
 		m.logsSearching = true
