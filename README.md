@@ -72,7 +72,9 @@ ekiben --version
 | Global | `c` · `q` | settings · quit |
 | Containers | `↑ ↓ ← →` / click | navigate / select |
 | Containers | `enter` or `l` | open detail (with logs) |
+| Containers | `e` | exec a shell into the container |
 | Containers | `s` `r` `p` `a` `u` `d` | stop · restart · pause · start · unpause · delete |
+| Containers | `S` `X` `R` | compose up · down · restart (selected project) |
 | Containers | `i` · `space` | inspect · collapse/expand group |
 | Img/Vol/Net | `↑ ↓` / click | select · `d` delete |
 | Detail | `↑↓ PgUp/PgDn g/G` / wheel | scroll logs |

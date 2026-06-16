@@ -67,19 +67,21 @@ func (s *SDK) List(ctx context.Context, all bool) ([]Container, error) {
 			}
 		}
 		out = append(out, Container{
-			ID:        su.ID,
-			Name:      name,
-			Project:   su.Labels["com.docker.compose.project"],
-			Service:   su.Labels["com.docker.compose.service"],
-			Image:     su.Image,
-			Status:    st,
-			Health:    health,
-			ExitCode:  exit,
-			Ports:     ports,
-			Exposed:   exposed,
-			CreatedAt: time.Unix(su.Created, 0),
-			Networks:  nets,
-			Mounts:    mounts,
+			ID:             su.ID,
+			Name:           name,
+			Project:        su.Labels["com.docker.compose.project"],
+			Service:        su.Labels["com.docker.compose.service"],
+			Image:          su.Image,
+			Status:         st,
+			Health:         health,
+			ExitCode:       exit,
+			Ports:          ports,
+			Exposed:        exposed,
+			CreatedAt:      time.Unix(su.Created, 0),
+			Networks:       nets,
+			Mounts:         mounts,
+			ComposeWorkdir: su.Labels["com.docker.compose.project.working_dir"],
+			ComposeFiles:   splitComposeFiles(su.Labels["com.docker.compose.project.config_files"]),
 		})
 	}
 	return out, nil
@@ -103,6 +105,20 @@ func portsFromSummary(ps []types.Port) []string {
 	out := make([]string, 0, len(nums))
 	for _, n := range nums {
 		out = append(out, fmt.Sprintf(":%d", n))
+	}
+	return out
+}
+
+// splitComposeFiles splits the compose config_files label into individual paths.
+func splitComposeFiles(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
 	}
 	return out
 }

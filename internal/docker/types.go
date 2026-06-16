@@ -62,6 +62,10 @@ type Container struct {
 	CreatedAt time.Time
 	Networks  []string // names of networks the container is attached to
 	Mounts    []string // volume names / bind sources the container uses
+
+	// compose project metadata (from labels), used to run `docker compose`
+	ComposeWorkdir string
+	ComposeFiles   []string
 }
 
 // Running reports whether the container is currently executing.

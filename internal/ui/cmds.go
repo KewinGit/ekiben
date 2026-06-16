@@ -2,11 +2,60 @@ package ui
 
 import (
 	"context"
+	"os/exec"
 	"time"
 
 	"github.com/KewinGit/ekiben/internal/docker"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// composeRef identifies a compose project for `docker compose` invocations.
+type composeRef struct {
+	project string
+	workdir string
+	files   []string
+}
+
+// execDoneMsg is returned after an interactive exec/compose process exits.
+type execDoneMsg struct{ err error }
+
+// composeUpAfterDownMsg chains `up` after a `down` for the restart action.
+type composeUpAfterDownMsg composeRef
+
+// execShellCmd suspends the TUI and opens a shell inside the container (bash if
+// available, else sh), via the docker CLI.
+func (m *Model) execShellCmd(id string) tea.Cmd {
+	c := exec.Command("docker", "exec", "-it", id, "sh", "-c",
+		"command -v bash >/dev/null 2>&1 && exec bash || exec sh")
+	return tea.ExecProcess(c, func(err error) tea.Msg { return execDoneMsg{err} })
+}
+
+func composeArgs(g composeRef, sub ...string) []string {
+	args := []string{"compose", "--project-name", g.project}
+	if g.workdir != "" {
+		args = append(args, "--project-directory", g.workdir)
+	}
+	for _, f := range g.files {
+		args = append(args, "-f", f)
+	}
+	return append(args, sub...)
+}
+
+func (m *Model) composeUpCmd(g composeRef) tea.Cmd {
+	return tea.ExecProcess(exec.Command("docker", composeArgs(g, "up", "-d")...),
+		func(err error) tea.Msg { return execDoneMsg{err} })
+}
+
+func (m *Model) composeDownCmd(g composeRef) tea.Cmd {
+	return tea.ExecProcess(exec.Command("docker", composeArgs(g, "down")...),
+		func(err error) tea.Msg { return execDoneMsg{err} })
+}
+
+// composeRestartCmd runs `down` then chains `up -d` via composeUpAfterDownMsg.
+func (m *Model) composeRestartCmd(g composeRef) tea.Cmd {
+	return tea.ExecProcess(exec.Command("docker", composeArgs(g, "down")...),
+		func(err error) tea.Msg { return composeUpAfterDownMsg(g) })
+}
 
 // refreshCmd lists containers once.
 func (m *Model) refreshCmd() tea.Cmd {

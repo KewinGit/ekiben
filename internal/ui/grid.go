@@ -674,8 +674,9 @@ func (m *Model) viewInfo() string {
 	body.WriteString(lbl.Render("monitoring  ") +
 		fmt.Sprintf("%d containers · %d images · %d volumes · %d networks", total, len(m.images), len(m.volumes), len(m.networks)) + "\n\n")
 	body.WriteString(dim.Render("keys  tab / 1-5  switch tab     c  settings     q  quit") + "\n")
-	body.WriteString(dim.Render("      ↑↓←→ navigate · click select · wheel scroll") + "\n")
-	body.WriteString(dim.Render("      enter focus · l logs · s/r/p/a/u/d actions · space collapse"))
+	body.WriteString(dim.Render("      ↑↓←→ navigate · click select · wheel scroll · enter focus") + "\n")
+	body.WriteString(dim.Render("      l logs · e shell · s/r/p/a/u/d actions · space collapse") + "\n")
+	body.WriteString(dim.Render("      S/X/R compose up/down/restart (selected project)"))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -768,8 +769,9 @@ type groupLike interface {
 
 func (m *Model) actionBar() string {
 	hints := []string{
-		"↑↓←→ navigate", "enter focus", "l logs", "s stop", "r restart", "p pause",
-		"a start", "u unpause", "i inspect", "d delete", "c settings", "q quit",
+		"↑↓←→ navigate", "enter focus", "l logs", "e shell", "s stop", "r restart",
+		"p pause", "a start", "u unpause", "i inspect", "d delete",
+		"S/X/R compose up/down/restart", "c settings", "q quit",
 	}
 	return wrapHints(hints, m.width, m.theme.Dim)
 }

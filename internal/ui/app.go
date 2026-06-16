@@ -274,6 +274,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// reload everything: an action may have changed containers/images/volumes/networks
 		return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
+	case execDoneMsg:
+		// exec/compose finished and the terminal is restored; reload everything
+		return m, tea.Batch(m.refreshCmd(), m.loadImagesCmd(), m.loadVolumesCmd(), m.loadNetworksCmd())
+	case composeUpAfterDownMsg:
+		return m, m.composeUpCmd(composeRef(msg))
 	case focusLogsMsg:
 		if msg.id == m.SelectedID() {
 			m.logsRaw = msg.content
@@ -401,6 +406,18 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.requestAction("start")
 	case "u":
 		return m, m.requestAction("unpause")
+	case "e":
+		if id := m.SelectedID(); id != "" {
+			return m, m.execShellCmd(id)
+		}
+	case "S":
+		if g, ok := m.selectedComposeRef(); ok {
+			return m, m.composeUpCmd(g)
+		}
+	case "X":
+		return m, m.requestCompose("down")
+	case "R":
+		return m, m.requestCompose("restart")
 	case "enter", "l":
 		m.openFocus()
 		return m, m.loadFocusLogsCmd()
@@ -410,6 +427,39 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.loadFocusLogsCmd()
 	}
 	return m, nil
+}
+
+// selectedComposeRef returns the compose project of the selected container.
+func (m *Model) selectedComposeRef() (composeRef, bool) {
+	c, ok := m.selectedContainer()
+	if !ok || c.Project == "" {
+		return composeRef{}, false
+	}
+	return composeRef{project: c.Project, workdir: c.ComposeWorkdir, files: c.ComposeFiles}, true
+}
+
+// requestCompose runs a compose action (down / restart) on the selected project,
+// gated by a danger confirm when confirm_destructive is on.
+func (m *Model) requestCompose(action string) tea.Cmd {
+	g, ok := m.selectedComposeRef()
+	if !ok {
+		return nil
+	}
+	act := func() tea.Cmd {
+		if action == "restart" {
+			return m.composeRestartCmd(g)
+		}
+		return m.composeDownCmd(g)
+	}
+	if !m.cfg.ConfirmDestructive {
+		return act()
+	}
+	msg := g.project
+	if action == "restart" {
+		msg = g.project + "  (down + up)"
+	}
+	m.modal = modalState{kind: modalConfirm, title: "compose " + action, msg: msg, danger: true, steps: 1, action: act}
+	return nil
 }
 
 // openFocus enters the detail view for the selected container, resetting log state.
@@ -474,6 +524,10 @@ func (m *Model) handleFocusKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.requestAction("unpause")
 	case "d":
 		return m, m.requestAction("delete")
+	case "e":
+		if id := m.SelectedID(); id != "" {
+			return m, m.execShellCmd(id)
+		}
 	}
 	return m, m.updateLogs(k)
 }

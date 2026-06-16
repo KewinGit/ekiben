@@ -126,7 +126,7 @@ func (m *Model) viewFocus() string {
 	}
 	logsHead := lipgloss.NewStyle().Foreground(t.Header).Bold(true).Render("logs") + dim.Render(status)
 	help := dim.Render(
-		"↑↓ PgUp/PgDn g/G scroll · wheel scroll · f follow · / search · esc back\n" +
+		"↑↓ PgUp/PgDn g/G scroll · wheel scroll · f follow · / search · e shell · esc back\n" +
 			"s stop · r restart · p pause · a start · u unpause · d delete")
 	helpH := lipgloss.Height(help)
 
