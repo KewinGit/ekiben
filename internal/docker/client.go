@@ -13,6 +13,9 @@ type Client interface {
 	Logs(ctx context.Context, id string, follow bool, tail int) (io.ReadCloser, error)
 	Inspect(ctx context.Context, id string) (string, error) // pretty JSON
 
+	Images(ctx context.Context) ([]Image, error)
+	Volumes(ctx context.Context) ([]Volume, error)
+
 	Start(ctx context.Context, id string) error
 	Stop(ctx context.Context, id string) error
 	Restart(ctx context.Context, id string) error

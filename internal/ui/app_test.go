@@ -45,3 +45,51 @@ func TestNavigationClampsAtEnd(t *testing.T) {
 		t.Fatalf("selection should clamp to last, got %q", m.SelectedID())
 	}
 }
+
+func TestHomeTabCycles(t *testing.T) {
+	m := newTestModel()
+	if m.homeTab != homeContainers {
+		t.Fatalf("initial homeTab = %d, want homeContainers(%d)", m.homeTab, homeContainers)
+	}
+	tabKey := tea.KeyMsg{Type: tea.KeyTab}
+	m.Update(tabKey)
+	if m.homeTab != homeImages {
+		t.Fatalf("after 1 tab: homeTab = %d, want homeImages(%d)", m.homeTab, homeImages)
+	}
+	m.Update(tabKey)
+	if m.homeTab != homeVolumes {
+		t.Fatalf("after 2 tabs: homeTab = %d, want homeVolumes(%d)", m.homeTab, homeVolumes)
+	}
+	m.Update(tabKey)
+	if m.homeTab != homeInfo {
+		t.Fatalf("after 3 tabs: homeTab = %d, want homeInfo(%d)", m.homeTab, homeInfo)
+	}
+	m.Update(tabKey)
+	if m.homeTab != homeContainers {
+		t.Fatalf("after 4 tabs (wrap): homeTab = %d, want homeContainers(%d)", m.homeTab, homeContainers)
+	}
+}
+
+func TestHomeTabDirectKeys(t *testing.T) {
+	m := newTestModel()
+	rune2 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}}
+	m.Update(rune2)
+	if m.homeTab != homeImages {
+		t.Fatalf("key '2': homeTab = %d, want homeImages(%d)", m.homeTab, homeImages)
+	}
+	rune3 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}}
+	m.Update(rune3)
+	if m.homeTab != homeVolumes {
+		t.Fatalf("key '3': homeTab = %d, want homeVolumes(%d)", m.homeTab, homeVolumes)
+	}
+	rune1 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}}
+	m.Update(rune1)
+	if m.homeTab != homeContainers {
+		t.Fatalf("key '1': homeTab = %d, want homeContainers(%d)", m.homeTab, homeContainers)
+	}
+	rune4 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}}
+	m.Update(rune4)
+	if m.homeTab != homeInfo {
+		t.Fatalf("key '4': homeTab = %d, want homeInfo(%d)", m.homeTab, homeInfo)
+	}
+}

@@ -2,6 +2,22 @@ package docker
 
 import "time"
 
+// Image is the projection of a Docker image that ekiben needs.
+type Image struct {
+	ID      string
+	Repo    string
+	Tag     string
+	Size    int64
+	Created time.Time
+}
+
+// Volume is the projection of a Docker volume that ekiben needs.
+type Volume struct {
+	Name       string
+	Driver     string
+	Mountpoint string
+}
+
 type Status string
 
 const (

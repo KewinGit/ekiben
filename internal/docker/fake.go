@@ -20,6 +20,10 @@ type Fake struct {
 	errs       chan error
 	// ActionErr, when non-nil, is returned by all action methods (Stop/Start/etc.).
 	ActionErr error
+
+	// ImagesList and VolumesList are returned by Images() and Volumes() respectively.
+	ImagesList  []Image
+	VolumesList []Volume
 }
 
 func NewFake(cs []Container) *Fake {
@@ -117,4 +121,20 @@ func (f *Fake) Remove(_ context.Context, id string) error {
 	f.containers = out
 	return nil
 }
+func (f *Fake) Images(_ context.Context) ([]Image, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]Image, len(f.ImagesList))
+	copy(out, f.ImagesList)
+	return out, nil
+}
+
+func (f *Fake) Volumes(_ context.Context) ([]Volume, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]Volume, len(f.VolumesList))
+	copy(out, f.VolumesList)
+	return out, nil
+}
+
 func (f *Fake) Close() error { return nil }

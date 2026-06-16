@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/KewinGit/ekiben/internal/docker"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -159,4 +160,34 @@ func (m *Model) focusTickCmd() tea.Cmd {
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
 		return focusTickMsg{}
 	})
+}
+
+// imagesMsg carries the result of listing images.
+type imagesMsg []docker.Image
+
+// volumesMsg carries the result of listing volumes.
+type volumesMsg []docker.Volume
+
+// loadImagesCmd fetches the images list.
+func (m *Model) loadImagesCmd() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		imgs, err := client.Images(context.Background())
+		if err != nil {
+			return errMsg{err}
+		}
+		return imagesMsg(imgs)
+	}
+}
+
+// loadVolumesCmd fetches the volumes list.
+func (m *Model) loadVolumesCmd() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		vols, err := client.Volumes(context.Background())
+		if err != nil {
+			return errMsg{err}
+		}
+		return volumesMsg(vols)
+	}
 }

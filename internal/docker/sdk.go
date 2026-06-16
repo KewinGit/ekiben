@@ -7,10 +7,13 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 )
 
@@ -176,4 +179,51 @@ func (s *SDK) Unpause(ctx context.Context, id string) error { return s.cli.Conta
 func (s *SDK) Remove(ctx context.Context, id string) error {
 	return s.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true})
 }
+func (s *SDK) Images(ctx context.Context) ([]Image, error) {
+	sums, err := s.cli.ImageList(ctx, image.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Image, 0, len(sums))
+	for _, su := range sums {
+		repo, tag := "<none>", su.ID
+		if len(su.ID) > 12 {
+			tag = su.ID[7:19] // strip "sha256:" prefix for short ID fallback
+		}
+		if len(su.RepoTags) > 0 && su.RepoTags[0] != "<none>:<none>" {
+			parts := strings.SplitN(su.RepoTags[0], ":", 2)
+			repo = parts[0]
+			if len(parts) == 2 {
+				tag = parts[1]
+			} else {
+				tag = "latest"
+			}
+		}
+		out = append(out, Image{
+			ID:      su.ID,
+			Repo:    repo,
+			Tag:     tag,
+			Size:    su.Size,
+			Created: time.Unix(su.Created, 0),
+		})
+	}
+	return out, nil
+}
+
+func (s *SDK) Volumes(ctx context.Context) ([]Volume, error) {
+	resp, err := s.cli.VolumeList(ctx, volume.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Volume, 0, len(resp.Volumes))
+	for _, v := range resp.Volumes {
+		out = append(out, Volume{
+			Name:       v.Name,
+			Driver:     v.Driver,
+			Mountpoint: v.Mountpoint,
+		})
+	}
+	return out, nil
+}
+
 func (s *SDK) Close() error { return s.cli.Close() }

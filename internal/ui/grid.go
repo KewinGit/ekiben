@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/KewinGit/ekiben/internal/config"
 	"github.com/KewinGit/ekiben/internal/docker"
 	"github.com/KewinGit/ekiben/internal/model"
+	"github.com/KewinGit/ekiben/internal/version"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // --- messages produced by background commands (filled in Task 16) ---
@@ -37,7 +40,7 @@ func (m *Model) viewCurrent() string {
 	case viewSettings:
 		return m.viewSettings()
 	default:
-		return m.viewGrid()
+		return m.viewHome()
 	}
 }
 
@@ -262,12 +265,189 @@ func (m *Model) header() string {
 	if w < 1 {
 		w = 80
 	}
+	tab := m.tabBar()
 	banner := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 		lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(ekibenBanner))
 	stats := lipgloss.PlaceHorizontal(w, lipgloss.Center,
 		lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
 			fmt.Sprintf("%d containers · %d healthy · %d down", total, healthy, down)))
-	return banner + "\n" + stats
+	return tab + "\n" + banner + "\n" + stats
+}
+
+// tabBar renders the top-level home tab bar.
+func (m *Model) tabBar() string {
+	names := []string{"Containers", "Images", "Volumes", "Info"}
+	var b strings.Builder
+	b.WriteString(" ")
+	for i, name := range names {
+		var s string
+		if homeTab(i) == m.homeTab {
+			s = lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(name)
+		} else {
+			s = lipgloss.NewStyle().Foreground(m.theme.Dim).Render(name)
+		}
+		b.WriteString(s)
+		if i < len(names)-1 {
+			b.WriteString(lipgloss.NewStyle().Foreground(m.theme.Dim).Render(" │ "))
+		}
+	}
+	return b.String()
+}
+
+// viewHome dispatches to the correct home tab view.
+func (m *Model) viewHome() string {
+	switch m.homeTab {
+	case homeImages:
+		return m.viewImages()
+	case homeVolumes:
+		return m.viewVolumes()
+	case homeInfo:
+		return m.viewInfo()
+	default:
+		return m.viewGrid()
+	}
+}
+
+// viewImages renders the images listing panel.
+func (m *Model) viewImages() string {
+	w := m.width
+	if w < 1 {
+		w = 80
+	}
+	availH := m.height - lipgloss.Height(m.tabBar()) - 4 // 4 = border top+bottom + some margin
+	if availH < 1 {
+		availH = 1
+	}
+
+	var lines []string
+	hdr := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(
+		fmt.Sprintf("%-40s  %8s  %s", "REPOSITORY:TAG", "SIZE", "ID"))
+	lines = append(lines, hdr)
+
+	for _, img := range m.images {
+		repoTag := img.Repo + ":" + img.Tag
+		shortID := img.ID
+		if len(shortID) > 19 {
+			shortID = shortID[7:19] // strip sha256: + 12 chars
+		}
+		line := fmt.Sprintf("%-40s  %8s  %s",
+			repoTag,
+			HumanBytes(uint64(img.Size)),
+			shortID,
+		)
+		lines = append(lines, line)
+	}
+
+	truncated := 0
+	if len(lines) > availH {
+		truncated = len(lines) - availH
+		lines = lines[:availH]
+	}
+	if truncated > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
+			fmt.Sprintf("… (+%d more)", truncated)))
+	}
+
+	contentW := w - 4
+	if contentW < 20 {
+		contentW = 20
+	}
+	panel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.Border).
+		Width(contentW).
+		Render(strings.Join(lines, "\n"))
+
+	return m.tabBar() + "\n" + panel
+}
+
+// viewVolumes renders the volumes listing panel.
+func (m *Model) viewVolumes() string {
+	w := m.width
+	if w < 1 {
+		w = 80
+	}
+	availH := m.height - lipgloss.Height(m.tabBar()) - 4
+	if availH < 1 {
+		availH = 1
+	}
+
+	var lines []string
+	hdr := lipgloss.NewStyle().Foreground(m.theme.Header).Bold(true).Render(
+		fmt.Sprintf("%-30s  %-10s  %s", "NAME", "DRIVER", "MOUNTPOINT"))
+	lines = append(lines, hdr)
+
+	mountW := w - 46 // leave room for name+driver columns + borders
+	if mountW < 20 {
+		mountW = 20
+	}
+	for _, vol := range m.volumes {
+		mp := ansi.Truncate(vol.Mountpoint, mountW, "…")
+		line := fmt.Sprintf("%-30s  %-10s  %s", vol.Name, vol.Driver, mp)
+		lines = append(lines, line)
+	}
+
+	truncated := 0
+	if len(lines) > availH {
+		truncated = len(lines) - availH
+		lines = lines[:availH]
+	}
+	if truncated > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Dim).Render(
+			fmt.Sprintf("… (+%d more)", truncated)))
+	}
+
+	contentW := w - 4
+	if contentW < 20 {
+		contentW = 20
+	}
+	panel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.Border).
+		Width(contentW).
+		Render(strings.Join(lines, "\n"))
+
+	return m.tabBar() + "\n" + panel
+}
+
+// viewInfo renders program info (moved from settings Info tab).
+func (m *Model) viewInfo() string {
+	t := m.theme
+	lbl := lipgloss.NewStyle().Foreground(t.Label)
+	dim := lipgloss.NewStyle().Foreground(t.Dim)
+
+	total := 0
+	for _, g := range m.groups {
+		total += len(g.Containers)
+	}
+
+	var body strings.Builder
+	body.WriteString(lbl.Render("ekiben    ") + version.String() + "\n")
+	body.WriteString(lbl.Render("config    ") + config.Path() + "\n")
+	body.WriteString(lbl.Render("containers") + fmt.Sprintf(" %d", total) + "\n")
+	body.WriteString(lbl.Render("images    ") + fmt.Sprintf(" %d", len(m.images)) + "\n")
+	body.WriteString(lbl.Render("volumes   ") + fmt.Sprintf(" %d", len(m.volumes)) + "\n\n")
+	body.WriteString(dim.Render("keys: tab/1-4 switch tab · c settings · q quit\n"))
+	body.WriteString(dim.Render("      (containers tab) ↑↓←→ navigate · enter focus\n"))
+	body.WriteString(dim.Render("      l logs · s/r/p/a/u/d actions · space collapse"))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(t.Border).
+		Padding(0, 1).
+		Render(body.String())
+
+	w := m.width
+	h := m.height
+	if w > 0 && h > 0 {
+		tabH := lipgloss.Height(m.tabBar())
+		remaining := h - tabH
+		if remaining < 1 {
+			remaining = 1
+		}
+		return m.tabBar() + "\n" + lipgloss.Place(w, remaining, lipgloss.Left, lipgloss.Top, box)
+	}
+	return m.tabBar() + "\n" + box
 }
 
 func (m *Model) groupHeader(g groupLike) string {

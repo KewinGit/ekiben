@@ -41,6 +41,18 @@ const (
 	viewSettings
 )
 
+// homeTab identifies which top-level tab is active in the grid view.
+type homeTab int
+
+const (
+	homeContainers homeTab = iota
+	homeImages
+	homeVolumes
+	homeInfo
+)
+
+const homeTabCount = 4
+
 type Model struct {
 	client  docker.Client
 	cfg     config.Config
@@ -92,6 +104,11 @@ type Model struct {
 	settingsGroups []string
 	lastContainers []docker.Container
 
+	// home tab state
+	homeTab homeTab
+	images  []docker.Image
+	volumes []docker.Volume
+
 	lastErr error
 }
 
@@ -116,7 +133,7 @@ func cloneBoolMap(in map[string]bool) map[string]bool {
 
 func (m *Model) Init() tea.Cmd {
 	m.eventCh, _ = m.client.Events(context.Background())
-	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent())
+	return tea.Batch(m.refreshCmd(), m.pollCmd(), m.waitForEvent(), m.loadImagesCmd(), m.loadVolumesCmd())
 }
 
 // applyContainers rebuilds groups + the flattened navigation order.
@@ -198,6 +215,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.pollCmd()
 	case containersMsg:
 		m.applyContainers(msg)
+		return m, nil
+	case imagesMsg:
+		m.images = []docker.Image(msg)
+		return m, nil
+	case volumesMsg:
+		m.volumes = []docker.Volume(msg)
 		return m, nil
 	case eventMsg:
 		return m, tea.Batch(m.refreshCmd(), m.waitForEvent())
@@ -295,9 +318,35 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.updateLogs(k)
 	}
+	// Home tab switching — active in all grid sub-tabs
 	switch k.String() {
-	case "q", "ctrl+c":
-		return m, tea.Quit
+	case "tab":
+		m.homeTab = (m.homeTab + 1) % homeTabCount
+		return m, m.homeTabSwitchCmd()
+	case "1":
+		m.homeTab = homeContainers
+		return m, m.homeTabSwitchCmd()
+	case "2":
+		m.homeTab = homeImages
+		return m, m.homeTabSwitchCmd()
+	case "3":
+		m.homeTab = homeVolumes
+		return m, m.homeTabSwitchCmd()
+	case "4":
+		m.homeTab = homeInfo
+		return m, m.homeTabSwitchCmd()
+	case "c":
+		m.mode = viewSettings
+		m.enterSettings()
+		return m, nil
+	}
+
+	// Container-specific keys only apply on the Containers tab
+	if m.homeTab != homeContainers {
+		return m, nil
+	}
+
+	switch k.String() {
 	case "right":
 		m.move(1)
 	case "left", "h":
@@ -335,11 +384,19 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = viewFocus
 		m.focusInspect = true
 		return m, tea.Batch(m.loadFocusLogsCmd(), m.focusTickCmd())
-	case "c":
-		m.mode = viewSettings
-		m.enterSettings()
 	}
 	return m, nil
+}
+
+// homeTabSwitchCmd returns a load cmd when switching to Images or Volumes tabs.
+func (m *Model) homeTabSwitchCmd() tea.Cmd {
+	switch m.homeTab {
+	case homeImages:
+		return m.loadImagesCmd()
+	case homeVolumes:
+		return m.loadVolumesCmd()
+	}
+	return nil
 }
 
 // selectedGroupCols returns the column count of the group holding the selection,
