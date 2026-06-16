@@ -1,17 +1,14 @@
-<div align="center">
-<pre>
+```
         _    _ _
    ___ | | _(_) |__   ___ _ __
   / _ \| |/ / | '_ \ / _ \ '_ \
  |  __/|   <| | |_) |  __/ | | |
   \___||_|\_\_|_.__/ \___|_| |_|
-</pre>
+```
 
 ### 駅弁 · ekiben
 
 **A railway-station bento for your Docker** — every Compose project is a compartment, each container a tasty morsel.
-
-</div>
 
 `ekiben` is a fast, mouse-friendly **terminal UI** to monitor and manage Docker on Linux servers (Debian / Ubuntu first). Instead of a flat table, your containers are served as **cards grouped by Compose project** in a fluid, responsive grid — with dedicated tabs for Images, Volumes, Networks and Info.
 
