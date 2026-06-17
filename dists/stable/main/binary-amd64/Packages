@@ -1,0 +1,16 @@
+Package: ekiben
+Architecture: amd64
+Version: 0.1.0
+Priority: optional
+Maintainer: Kevin Corso <kevin.froster.personal@outlook.it>
+Installed-Size: 9268
+Filename: pool/main/e/ekiben/ekiben_0.1.0_linux_amd64.deb
+Size: 3814934
+MD5sum: 8e292a2ab562592d30126bf8aa245193
+SHA1: 40c7cd959a1e596ff0200ee920a0625d792106bb
+SHA256: 8151d68029c6b8385a472b84e5a4ac00457b221c6c9f914c4726c531ebe28591
+SHA512: 0e33d51cf1b5a771d9eea1368724ea805cf16e02159f2a91882a6ef5dd0d7032dcc0c72b8e004be60c668f8e5c77b50089fa67a1e8843060b9ee69951b2e3320
+Homepage: https://github.com/KewinGit/ekiben
+Description: Terminal UI to monitor and manage Docker containers as compose-grouped cards.
+Architecture-Variant: amd64v1
+
