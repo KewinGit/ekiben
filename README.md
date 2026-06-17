@@ -25,7 +25,7 @@ Ships as a **single static binary**: drop it on a server and run. No runtime dep
 - **Dependency insight** — select any image / volume / network to see exactly **which containers use it**, and a clear **STATUS** column: `safe delete`, `in use (N)` or `locked`.
 - **Tiered, safe deletes** — a single confirm for safe removals, a **block** with the blocking containers when something is in use, and a **double confirm** with a red centered popup for dangerous actions (e.g. deleting a running container).
 - **Full mouse support** — click to select a container/row, click tabs and group headers, wheel to scroll.
-- **Actions** — start, stop, restart, pause/unpause, inspect, delete — with destructive ones gated by the confirmation rules above. (No `exec`/shell by design.)
+- **Actions** — start, stop, restart, pause/unpause, inspect, delete, plus `exec` to drop into a shell inside a container — with destructive ones gated by the confirmation rules above.
 - **Themes & config** — dark / light / mono, refresh interval, sort order, all saved to a simple YAML file.
 
 ---
