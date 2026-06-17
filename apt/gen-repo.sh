@@ -17,4 +17,6 @@ sh "$HERE/build-keyring-deb.sh" "$PAGES/ekiben.gpg" "$PAGES/ekiben-archive-keyri
 sh "$HERE/build-index.sh" "$PAGES" "$HERE/apt-ftparchive.conf" "$KEYID"
 cp "$HERE/index.html.tmpl" "$PAGES/index.html"
 
-find "$PAGES" -name '*.db' -delete
+# drop apt-ftparchive cache DBs and unused Contents indices (apt never fetches
+# Contents during `apt update`; we ship only Packages/Release).
+find "$PAGES" \( -name '*.db' -o -name 'Contents-*' \) -delete
