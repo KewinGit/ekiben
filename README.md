@@ -52,7 +52,21 @@ go install github.com/KewinGit/ekiben/cmd/ekiben@latest
 make build      # -> ./ekiben  (static binary, copy anywhere)
 ```
 
-> A full APT repository (`apt update && apt install ekiben`) is planned.
+### APT repository (Debian / Ubuntu) — recommended
+
+```bash
+curl -fsSLO https://kewingit.github.io/ekiben/ekiben-archive-keyring.deb
+sudo apt install ./ekiben-archive-keyring.deb
+sudo apt update && sudo apt install ekiben
+```
+
+Updates then arrive via `sudo apt upgrade`. Manual alternative:
+
+```bash
+curl -fsSL https://kewingit.github.io/ekiben/ekiben.gpg | sudo tee /usr/share/keyrings/ekiben-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/ekiben-archive-keyring.gpg] https://kewingit.github.io/ekiben stable main" | sudo tee /etc/apt/sources.list.d/ekiben.list
+sudo apt update && sudo apt install ekiben
+```
 
 ---
 
