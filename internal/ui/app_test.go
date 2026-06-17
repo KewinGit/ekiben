@@ -47,6 +47,91 @@ func TestNavigationClampsAtEnd(t *testing.T) {
 	}
 }
 
+// newGridTestModel builds a model with a ragged, multi-group layout and renders
+// once so card geometry (m.cardRects) is populated. With width 100 the layout is:
+//
+//	group alpha (4 cols): [a1 a2 a3 a4] / [a5]
+//	group bravo (3 cols): [b1 b2 b3]
+//
+// The two groups get different column counts (bravo names are longer), so a fixed
+// flat stride cannot describe vertical moves correctly.
+func newGridTestModel() *Model {
+	cs := []docker.Container{
+		{ID: "a1", Name: "a1", Project: "alpha", Status: docker.StatusUp},
+		{ID: "a2", Name: "a2", Project: "alpha", Status: docker.StatusUp},
+		{ID: "a3", Name: "a3", Project: "alpha", Status: docker.StatusUp},
+		{ID: "a4", Name: "a4", Project: "alpha", Status: docker.StatusUp},
+		{ID: "a5", Name: "a5", Project: "alpha", Status: docker.StatusUp},
+		{ID: "b1", Name: "bravo-long-name-1", Project: "bravo", Status: docker.StatusUp},
+		{ID: "b2", Name: "bravo-long-name-2", Project: "bravo", Status: docker.StatusUp},
+		{ID: "b3", Name: "bravo-long-name-3", Project: "bravo", Status: docker.StatusUp},
+	}
+	m := newTestModelFromFake(docker.NewFake(cs), cs)
+	_ = m.View() // populate cardRects
+	return m
+}
+
+func selectByID(m *Model, id string) {
+	for i, oid := range m.order {
+		if oid == id {
+			m.selected = i
+			return
+		}
+	}
+}
+
+// Down must follow the visual grid: from a3 (alpha row0 col2) the row below in
+// the same group is [a5], so it lands on a5 — not a jump into bravo.
+func TestNavigationDownNextRowSameGroup(t *testing.T) {
+	m := newGridTestModel()
+	selectByID(m, "a3")
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.SelectedID() != "a5" {
+		t.Fatalf("down from a3 = %q, want a5", m.SelectedID())
+	}
+}
+
+// Down from the last row of alpha crosses the group header into bravo's first
+// row, picking the column-closest card (a5 is leftmost -> b1).
+func TestNavigationDownIntoNextGroup(t *testing.T) {
+	m := newGridTestModel()
+	selectByID(m, "a5")
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.SelectedID() != "b1" {
+		t.Fatalf("down from a5 = %q, want b1", m.SelectedID())
+	}
+}
+
+// Up from bravo crosses back into alpha's last row [a5].
+func TestNavigationUpIntoPrevGroup(t *testing.T) {
+	m := newGridTestModel()
+	selectByID(m, "b2")
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.SelectedID() != "a5" {
+		t.Fatalf("up from b2 = %q, want a5", m.SelectedID())
+	}
+}
+
+// At the bottom row there is no row below, so down keeps the selection.
+func TestNavigationDownAtBottomStays(t *testing.T) {
+	m := newGridTestModel()
+	selectByID(m, "b3")
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.SelectedID() != "b3" {
+		t.Fatalf("down from bottom = %q, want b3 (stay)", m.SelectedID())
+	}
+}
+
+// Up from the top row keeps the selection.
+func TestNavigationUpAtTopStays(t *testing.T) {
+	m := newGridTestModel()
+	selectByID(m, "a2")
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.SelectedID() != "a2" {
+		t.Fatalf("up from top = %q, want a2 (stay)", m.SelectedID())
+	}
+}
+
 func TestHomeTabCycles(t *testing.T) {
 	m := newTestModel()
 	if m.homeTab != homeContainers {

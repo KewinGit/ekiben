@@ -480,9 +480,9 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "left", "h":
 		m.move(-1)
 	case "down", "j":
-		m.move(m.selectedGroupCols())
+		m.moveVertical(1)
 	case "up", "k":
-		m.move(-m.selectedGroupCols())
+		m.moveVertical(-1)
 	case " ", "space":
 		m.toggleCollapse()
 	case "s":
@@ -697,6 +697,76 @@ func (m *Model) selectedGroupCols() int {
 		return 1
 	}
 	return m.cols
+}
+
+// moveVertical moves the selection one visual row up (dir<0) or down (dir>0),
+// using the rendered card geometry in m.cardRects so navigation follows the
+// actual on-screen grid. The flat order alone cannot describe this: per-group
+// column counts vary, last rows are ragged, and group headers sit between rows.
+// It finds the nearest card row in the requested direction and, within it, the
+// card whose horizontal center is closest to the current one.
+func (m *Model) moveVertical(dir int) {
+	if len(m.order) == 0 {
+		return
+	}
+	id := m.SelectedID()
+	var cur cardRect
+	found := false
+	for _, r := range m.cardRects {
+		if r.id == id {
+			cur, found = r, true
+			break
+		}
+	}
+	if !found {
+		// geometry not available yet (no render): fall back to a flat stride
+		m.move(dir * m.selectedGroupCols())
+		return
+	}
+
+	// nearest row (cards in a row share the same y) in the requested direction
+	targetY := -1
+	for _, r := range m.cardRects {
+		if dir > 0 {
+			if r.y > cur.y && (targetY == -1 || r.y < targetY) {
+				targetY = r.y
+			}
+		} else {
+			if r.y < cur.y && (targetY == -1 || r.y > targetY) {
+				targetY = r.y
+			}
+		}
+	}
+	if targetY == -1 {
+		return // already at the top/bottom row
+	}
+
+	// within that row pick the card whose center is horizontally closest
+	curCenter := cur.x + cur.w/2
+	bestID := ""
+	bestDist := 0
+	for _, r := range m.cardRects {
+		if r.y != targetY {
+			continue
+		}
+		d := (r.x + r.w/2) - curCenter
+		if d < 0 {
+			d = -d
+		}
+		if bestID == "" || d < bestDist {
+			bestID, bestDist = r.id, d
+		}
+	}
+	if bestID == "" {
+		return
+	}
+	for i, oid := range m.order {
+		if oid == bestID {
+			m.selected = i
+			break
+		}
+	}
+	m.ensureSelectedVisible()
 }
 
 func (m *Model) move(delta int) {
