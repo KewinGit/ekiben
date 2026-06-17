@@ -9,6 +9,12 @@ PAGES="$2"
 KEYID="ekiben repository signing"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
+# always drop apt-ftparchive cache DBs and unused Contents indices, even if a
+# later step fails — apt never fetches Contents during `apt update`, and the
+# cache DBs must never reach gh-pages.
+cleanup() { find "$PAGES" \( -name '*.db' -o -name 'Contents-*' \) -delete 2>/dev/null || true; }
+trap cleanup EXIT
+
 mkdir -p "$PAGES/pool/main/e/ekiben"
 cp "$DEBS"/*.deb "$PAGES/pool/main/e/ekiben/"
 
@@ -16,7 +22,3 @@ gpg --export "$KEYID" > "$PAGES/ekiben.gpg"
 sh "$HERE/build-keyring-deb.sh" "$PAGES/ekiben.gpg" "$PAGES/ekiben-archive-keyring.deb"
 sh "$HERE/build-index.sh" "$PAGES" "$HERE/apt-ftparchive.conf" "$KEYID"
 cp "$HERE/index.html.tmpl" "$PAGES/index.html"
-
-# drop apt-ftparchive cache DBs and unused Contents indices (apt never fetches
-# Contents during `apt update`; we ship only Packages/Release).
-find "$PAGES" \( -name '*.db' -o -name 'Contents-*' \) -delete
